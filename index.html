@@ -1,39 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
-<head>
+  <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Waypoint KMZ Planner - MVP</title>
 
     <!-- Leaflet (OpenStreetMap map renderer) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
 
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css">
-</head>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
 
-<body>
+  <body>
     <div id="map"></div>
 
-    <div class="topbar">
-        <div class="searchBox">
-            <div class="searchRow">
-                <input id="SearchInput" type="text" placeholder="Search a place (city, address, landmark)"
-                    autocomplete="off" />
-                <button id="SearchBtn" type="button">Search</button>
-            </div>
-            <div id="Results" class="results" style="display:none"></div>
+    <div id="WaypointSidebar" class="sidebar">
+      <div class="panelHeader" id="WaypointPanelHeader">
+        <div class="panelTitle">Waypoints</div>
+        <div class="panelHint">Click on the map to add</div>
+      </div>
+      <div id="WaypointList" class="panelBody"></div>
+    </div>
+
+    <div class="settingsPanel">
+      <div class="panelHeader">
+        <div class="panelTitle">Settings</div>
+        <div class="panelHint">Units</div>
+      </div>
+      <div class="panelBody settingsBody">
+        <div class="settingsRow">
+          <label>
+            <input
+              type="radio"
+              name="Units"
+              value="metric"
+              checked
+            />
+            Metric (m, m/s)
+          </label>
         </div>
+        <div class="settingsRow">
+          <label>
+            <input type="radio" name="Units" value="imperial" />
+            Imperial (ft, mph)
+          </label>
+        </div>
+        <div class="settingsRow">
+          <label class="settingsLabel" for="GlobalAltInput">Global altitude</label>
+          <input id="GlobalAltInput" type="number" step="1" value="50" />
+        </div>
+        <div class="settingsRow">
+          <label class="settingsLabel" for="GlobalSpeedInput">Global speed</label>
+          <input id="GlobalSpeedInput" type="number" step="0.5" value="8" />
+        </div>
+      </div>
+    </div>
+
+    <div class="topbar">
+      <div class="searchBox">
+        <div class="searchRow">
+          <input
+            id="SearchInput"
+            type="text"
+            placeholder="Search a place (city, address, landmark)"
+            autocomplete="off"
+          />
+          <button id="SearchBtn" type="button">Search</button>
+        </div>
+        <div id="Results" class="results" style="display: none"></div>
+      </div>
     </div>
 
     <!-- Leaflet (OpenStreetMap map renderer) -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
 
     <!-- Custom scripts -->
     <script src="js/main.js"></script>
-</body>
-
+  </body>
 </html>
