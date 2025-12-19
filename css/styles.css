@@ -29,29 +29,129 @@ body {
   width: 100%;
 }
 
-.sidebar {
+.leftControls {
+  --left-panel-width: 320px;
+  --dock-width: 48px;
   position: absolute;
   top: 12px;
   left: 12px;
-  width: 320px;
-  max-width: 92vw;
-  z-index: 1000;
+  z-index: 1100;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   pointer-events: none;
 }
 
-.sidebar.collapsed {
-  width: auto;
-  max-width: none;
+.leftButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
 }
 
-.settingsPanel {
+.dockButton {
+  width: var(--dock-width);
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 25, 45, 0.92);
+  color: #e8f4ff;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  transition: all 0.15s ease;
+}
+
+.dockButton:hover {
+  background: #4db3ff;
+  border-color: rgba(77, 179, 255, 0.9);
+  color: #0b1f33;
+  box-shadow: 0 4px 14px rgba(77, 179, 255, 0.35);
+}
+
+.dockButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(77, 179, 255, 0.35);
+}
+
+.dockButton.active {
+  background: #4db3ff;
+  border-color: rgba(77, 179, 255, 0.9);
+  color: #0b1f33;
+}
+
+.leftPanel {
+  width: var(--left-panel-width);
+  max-width: 92vw;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.22s ease;
+}
+
+.leftControls.collapsed .leftPanel {
+  transform: translateX(calc(-1 * (var(--left-panel-width) - var(--dock-width))));
+}
+
+.rightControls {
+  --tools-panel-width: 260px;
+  --dock-width: 60px;
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 240px;
-  max-width: 88vw;
-  z-index: 1000;
+  z-index: 1100;
+  width: calc(var(--tools-panel-width) + var(--dock-width) + 12px);
   pointer-events: none;
+  height: 0;
+}
+
+.rightButtons {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.rightControls .dockButton {
+  width: var(--dock-width);
+}
+
+.toolsPanel {
+  position: absolute;
+  top: 0;
+  right: calc(var(--dock-width) + 8px);
+  width: var(--tools-panel-width);
+  max-width: 88vw;
+  pointer-events: auto;
+  transition: transform 0.22s ease, opacity 0.18s ease;
+  transform: translateX(105%);
+  opacity: 1;
+}
+
+.rightControls.expanded .toolsPanel {
+  transform: translateX(0);
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.rightControls.collapsed .toolsPanel {
+  transform: translateX(150%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.sidebar {
+  width: 100%;
+  max-width: none;
+  pointer-events: auto;
+}
+
+.sidebar.collapsed {
+  width: 100%;
 }
 
 .panelHeader {
@@ -123,6 +223,20 @@ body {
   gap: 6px;
 }
 
+.settingsRow.inlineRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settingsRow.buttonRow {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .settingsRow label {
   display: flex;
   align-items: center;
@@ -143,9 +257,66 @@ body {
   width: 100%;
 }
 
+.settingsRow.inlineRow input[type="number"] {
+  max-width: 120px;
+}
+
 .settingsLabel {
   font-size: 12px;
   color: var(--muted);
+}
+
+.settingsDivider {
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin: 12px 0;
+}
+
+.toolSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toolTitle {
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+
+.settingsHint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.sidebarPanel {
+  pointer-events: auto;
+}
+
+.toolButton {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.toolButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.toolButton.secondary {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.toolButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .emptyState {
@@ -517,6 +688,20 @@ body {
 
 /* Mobile adjustments */
 @media (max-width: 520px) {
+  .leftControls {
+    --left-panel-width: 280px;
+    top: 8px;
+    left: 8px;
+  }
+
+  .rightControls {
+    top: 8px;
+    right: 8px;
+    --tools-panel-width: 230px;
+    --dock-width: 56px;
+    width: calc(var(--tools-panel-width) + var(--dock-width) + 10px);
+  }
+
   .topbar {
     left: 12px;
     right: 12px;

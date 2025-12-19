@@ -12,6 +12,10 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
+    />
 
     <!-- Custom styles -->
     <link rel="stylesheet" href="css/styles.css" />
@@ -20,45 +24,119 @@
   <body>
     <div id="map"></div>
 
-    <div id="WaypointSidebar" class="sidebar">
-      <div class="panelHeader" id="WaypointPanelHeader">
-        <div class="panelTitle">Waypoints</div>
-        <div class="panelHint">Click on the map to add</div>
+    <div id="LeftControls" class="leftControls collapsed">
+      <div class="leftButtons">
+        <button id="ToggleWaypointsBtn" type="button" class="dockButton" title="Waypoints">
+          Wpts
+        </button>
+        <button id="ToggleSettingsBtn" type="button" class="dockButton" title="Settings">
+          Sets
+        </button>
       </div>
-      <div id="WaypointList" class="panelBody"></div>
+      <div class="leftPanel">
+        <div id="WaypointSidebar" class="sidebarPanel">
+          <div class="panelHeader" id="WaypointPanelHeader">
+            <div class="panelTitle">Waypoints</div>
+            <div class="panelHint">Click on the map to add</div>
+          </div>
+          <div id="WaypointList" class="panelBody"></div>
+        </div>
+
+        <div id="SettingsPanelLeft" class="sidebarPanel">
+          <div class="panelHeader">
+            <div class="panelTitle">Settings</div>
+            <div class="panelHint">Units & defaults</div>
+          </div>
+          <div class="panelBody settingsBody">
+            <div class="settingsRow">
+              <label>
+                <input
+                  type="radio"
+                  name="Units"
+                  value="metric"
+                  checked
+                />
+                Metric (m, m/s)
+              </label>
+            </div>
+            <div class="settingsRow">
+              <label>
+                <input type="radio" name="Units" value="imperial" />
+                Imperial (ft, mph)
+              </label>
+            </div>
+            <div class="settingsRow">
+              <label class="settingsLabel" for="GlobalAltInput">Global altitude</label>
+              <input id="GlobalAltInput" type="number" step="1" value="50" />
+            </div>
+            <div class="settingsRow">
+              <label class="settingsLabel" for="GlobalSpeedInput">Global speed</label>
+              <input id="GlobalSpeedInput" type="number" step="0.5" value="8" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="settingsPanel">
-      <div class="panelHeader">
-        <div class="panelTitle">Settings</div>
-        <div class="panelHint">Units</div>
-      </div>
+    <div id="RightControls" class="rightControls collapsed">
+      <div class="toolsPanel">
+        <div class="panelHeader">
+          <div class="panelTitle">Tools</div>
+          <div class="panelHint">Shapes & rotation</div>
+        </div>
       <div class="panelBody settingsBody">
-        <div class="settingsRow">
-          <label>
-            <input
-              type="radio"
-              name="Units"
-              value="metric"
-              checked
-            />
-            Metric (m, m/s)
-          </label>
+        <div class="toolSection">
+          <div class="toolTitle">Draw shape</div>
+          <div class="settingsRow buttonRow">
+            <button id="DrawLineBtn" type="button" class="toolButton">Line</button>
+            <button id="DrawPolygonBtn" type="button" class="toolButton">Polygon</button>
+          </div>
+          <div class="settingsHint">Set a boundary (line will be buffered) and finish on the map.</div>
         </div>
-        <div class="settingsRow">
-          <label>
-            <input type="radio" name="Units" value="imperial" />
-            Imperial (ft, mph)
-          </label>
+
+        <div class="settingsDivider"></div>
+
+        <div class="toolSection">
+          <div class="toolTitle">Shape tools</div>
+          <div class="settingsRow inlineRow">
+            <label class="settingsLabel" for="ShapeSpacingInput">Spacing (m)</label>
+            <input id="ShapeSpacingInput" type="number" min="1" step="1" value="30" />
+          </div>
+          <div class="settingsRow buttonRow">
+            <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate waypoints</button>
+            <button id="ClearShapesBtn" type="button" class="toolButton secondary">
+              Clear shape
+            </button>
+          </div>
+          <div class="settingsHint">Generate a coverage path inside the boundary using the spacing above.</div>
         </div>
-        <div class="settingsRow">
-          <label class="settingsLabel" for="GlobalAltInput">Global altitude</label>
-          <input id="GlobalAltInput" type="number" step="1" value="50" />
+
+          <div class="settingsDivider"></div>
+
+          <div class="toolSection">
+            <div class="toolTitle">Rotate selection</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="RotationInput">Angle (deg)</label>
+              <input
+                id="RotationInput"
+                type="number"
+                step="1"
+                min="-180"
+                max="180"
+                value="0"
+              />
+            </div>
+            <div class="settingsRow buttonRow">
+              <button id="ApplyRotationBtn" type="button" class="toolButton">Rotate selected</button>
+            </div>
+            <div class="settingsHint">Rotates all selected waypoints around their centroid.</div>
+          </div>
         </div>
-        <div class="settingsRow">
-          <label class="settingsLabel" for="GlobalSpeedInput">Global speed</label>
-          <input id="GlobalSpeedInput" type="number" step="0.5" value="8" />
-        </div>
+      </div>
+      <div class="rightButtons">
+        <button id="ToggleToolsBtn" type="button" class="dockButton" title="Tools">
+          Tools
+        </button>
       </div>
     </div>
 
@@ -83,6 +161,8 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 
     <!-- Custom scripts -->
     <script src="js/main.js"></script>

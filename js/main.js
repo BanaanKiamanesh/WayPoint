@@ -21,6 +21,30 @@ L.control
   })
   .addTo(MapObj);
 
+// Feature group to hold drawn shapes (lines/polygons)
+const DrawnItems = L.featureGroup();
+DrawnItems.addTo(MapObj);
+
+const DrawOptions = {
+  polyline: {
+    shapeOptions: {
+      color: "#ffb347",
+      weight: 3,
+    },
+  },
+  polygon: {
+    allowIntersection: true,
+    showArea: false,
+    shapeOptions: {
+      color: "#ffd166",
+      weight: 2.5,
+    },
+  },
+};
+
+let ActiveDrawer = null;
+let ActiveDrawMode = null;
+
 // Marker for search result
 let SearchMarker = null;
 
@@ -29,19 +53,36 @@ const SearchInput = document.getElementById("SearchInput");
 const SearchBtn = document.getElementById("SearchBtn");
 const ResultsDiv = document.getElementById("Results");
 const WaypointSidebar = document.getElementById("WaypointSidebar");
+const SettingsPanelLeft = document.getElementById("SettingsPanelLeft");
 const WaypointListDiv = document.getElementById("WaypointList");
 const WaypointPanelHeader = document.getElementById("WaypointPanelHeader");
 const UnitRadios = document.querySelectorAll('input[name="Units"]');
 const GlobalAltInput = document.getElementById("GlobalAltInput");
 const GlobalSpeedInput = document.getElementById("GlobalSpeedInput");
+const ShapeSpacingInput = document.getElementById("ShapeSpacingInput");
+const GenerateFromShapeBtn = document.getElementById("GenerateFromShapeBtn");
+const ClearShapesBtn = document.getElementById("ClearShapesBtn");
+const RotationInput = document.getElementById("RotationInput");
+const ApplyRotationBtn = document.getElementById("ApplyRotationBtn");
+const LeftControlsWrap = document.getElementById("LeftControls");
+const ToggleWaypointsBtn = document.getElementById("ToggleWaypointsBtn");
+const ToggleSettingsBtn = document.getElementById("ToggleSettingsBtn");
+const RightControlsWrap = document.getElementById("RightControls");
+const ToggleToolsBtn = document.getElementById("ToggleToolsBtn");
+const DrawLineBtn = document.getElementById("DrawLineBtn");
+const DrawPolygonBtn = document.getElementById("DrawPolygonBtn");
 
 // ----- Waypoint state -----
 const Waypoints = [];
 const SelectedIds = new Set();
 const ExpandedIds = new Set();
 let IsWaypointPanelOpen = true;
+let LeftPanelOpen = false;
+let ActiveLeftPane = "waypoints";
+let ToolsPanelOpen = false;
 let NextWaypointId = 1;
 const MarkerById = new Map();
+let LastRotationSnapshot = null; // Reserved for future undo/redo of transforms
 const WaypointLine = L.polyline([], {
   color: "#4db3ff",
   weight: 3,
@@ -144,6 +185,518 @@ function FormatCoord(Num) {
   return Number(Num).toFixed(5);
 }
 
+function UpdateLeftPanelUi() {
+  const ShowWaypoints = LeftPanelOpen && ActiveLeftPane === "waypoints";
+  const ShowSettings = LeftPanelOpen && ActiveLeftPane === "settings";
+
+  if (LeftControlsWrap) {
+    LeftControlsWrap.classList.toggle("collapsed", !LeftPanelOpen);
+    LeftControlsWrap.classList.toggle("expanded", LeftPanelOpen);
+  }
+
+  if (WaypointSidebar) {
+    WaypointSidebar.style.display = ShowWaypoints ? "block" : "none";
+  }
+  if (SettingsPanelLeft) {
+    SettingsPanelLeft.style.display = ShowSettings ? "block" : "none";
+  }
+  if (ToggleWaypointsBtn) {
+    ToggleWaypointsBtn.classList.toggle("active", ShowWaypoints);
+  }
+  if (ToggleSettingsBtn) {
+    ToggleSettingsBtn.classList.toggle("active", ShowSettings);
+  }
+}
+
+function StopActiveDrawing() {
+  if (ActiveDrawer) {
+    ActiveDrawer.disable();
+  }
+  ActiveDrawer = null;
+  ActiveDrawMode = null;
+}
+
+function StartDrawing(Mode) {
+  StopActiveDrawing();
+
+  if (Mode === "polyline") {
+    ActiveDrawer = new L.Draw.Polyline(MapObj, DrawOptions.polyline);
+  } else if (Mode === "polygon") {
+    ActiveDrawer = new L.Draw.Polygon(MapObj, DrawOptions.polygon);
+  } else {
+    return;
+  }
+
+  ActiveDrawMode = Mode;
+  ActiveDrawer.enable();
+  UpdateToolsUi();
+}
+
+function UpdateRightPanelUi() {
+  if (RightControlsWrap) {
+    RightControlsWrap.classList.toggle("collapsed", !ToolsPanelOpen);
+    RightControlsWrap.classList.toggle("expanded", ToolsPanelOpen);
+  }
+  if (ToggleToolsBtn) {
+    ToggleToolsBtn.classList.toggle("active", ToolsPanelOpen);
+  }
+}
+
+function TryFinishPolygonOnFirstPoint(Ev) {
+  if (!ActiveDrawer || ActiveDrawMode !== "polygon") return false;
+  const Markers = ActiveDrawer._markers || [];
+  if (Markers.length < 2) return false;
+
+  const FirstLatLng = Markers[0].getLatLng();
+  const ClickPt = MapObj.latLngToLayerPoint(Ev.latlng);
+  const FirstPt = MapObj.latLngToLayerPoint(FirstLatLng);
+  const DistPx = ClickPt.distanceTo(FirstPt);
+
+  if (DistPx <= 12) {
+    // Close polygon manually when user clicks near the first vertex
+    ActiveDrawer._finishShape && ActiveDrawer._finishShape();
+    return true;
+  }
+  return false;
+}
+
+// ----- Coverage planning utilities (ported to JS) -----
+const SweepDirection = {
+  UP: 1,
+  DOWN: -1,
+};
+
+const MovingDirection = {
+  RIGHT: 1,
+  LEFT: -1,
+};
+
+function rotMat2d(th) {
+  const c = Math.cos(th);
+  const s = Math.sin(th);
+  return [
+    [c, -s],
+    [s, c],
+  ];
+}
+
+function applyRot(mat, x, y) {
+  return [mat[0][0] * x + mat[0][1] * y, mat[1][0] * x + mat[1][1] * y];
+}
+
+class GridMap {
+  constructor(width, height, resolution, centerX, centerY, polygonMercator) {
+    this.width = width;
+    this.height = height;
+    this.resolution = resolution;
+    this.centerX = centerX;
+    this.centerY = centerY;
+    this.data = Array.from({ length: height }, () => new Float32Array(width));
+    this.polygon = polygonMercator;
+    this.setPolygonFreeArea();
+  }
+
+  worldToIndex(x, y) {
+    const ix = Math.round((x - this.centerX) / this.resolution + this.width / 2);
+    const iy = Math.round((y - this.centerY) / this.resolution + this.height / 2);
+    return [ix, iy];
+  }
+
+  indexToWorld(ix, iy) {
+    const x = (ix - this.width / 2) * this.resolution + this.centerX;
+    const y = (iy - this.height / 2) * this.resolution + this.centerY;
+    return [x, y];
+  }
+
+  checkOccupied(ix, iy, occupiedVal = 0.5) {
+    ix = Math.trunc(ix);
+    iy = Math.trunc(iy);
+    if (ix < 0 || ix >= this.width || iy < 0 || iy >= this.height) return true;
+    return this.data[iy][ix] >= occupiedVal;
+  }
+
+  setValue(ix, iy, val) {
+    ix = Math.trunc(ix);
+    iy = Math.trunc(iy);
+    if (ix < 0 || ix >= this.width || iy < 0 || iy >= this.height) return false;
+    this.data[iy][ix] = val;
+    return true;
+  }
+
+  setPolygonFreeArea() {
+    const poly =
+      this.polygon && this.polygon.type === "Feature"
+        ? this.polygon
+        : {
+            type: "Feature",
+            geometry: this.polygon,
+            properties: {},
+          };
+    if (!poly) return;
+    for (let iy = 0; iy < this.height; iy++) {
+      for (let ix = 0; ix < this.width; ix++) {
+        const [x, y] = this.indexToWorld(ix, iy);
+        const inside = turf.booleanPointInPolygon([x, y], poly);
+        if (!inside) {
+          this.data[iy][ix] = 1;
+        }
+      }
+    }
+  }
+}
+
+function searchFreeGridIndexAtEdgeY(gridMap, fromUpper = false) {
+  const yRange = fromUpper
+    ? [...Array(gridMap.height).keys()].reverse()
+    : [...Array(gridMap.height).keys()];
+  const xRange = fromUpper
+    ? [...Array(gridMap.width).keys()].reverse()
+    : [...Array(gridMap.width).keys()];
+
+  let yIndex = null;
+  const xIndexes = [];
+
+  for (const iy of yRange) {
+    for (const ix of xRange) {
+      if (!gridMap.checkOccupied(ix, iy)) {
+        yIndex = iy;
+        xIndexes.push(ix);
+      }
+    }
+    if (yIndex !== null) break;
+  }
+
+  return [xIndexes, yIndex];
+}
+
+function findSweepDirectionAndStartPosition(ox, oy) {
+  let maxDist = 0;
+  let vec = [0, 0];
+  let sweepStart = [0, 0];
+  for (let i = 0; i < ox.length - 1; i++) {
+    const dx = ox[i + 1] - ox[i];
+    const dy = oy[i + 1] - oy[i];
+    const d = Math.hypot(dx, dy);
+    if (d > maxDist) {
+      maxDist = d;
+      vec = [dx, dy];
+      sweepStart = [ox[i], oy[i]];
+    }
+  }
+  return { vec, sweepStart };
+}
+
+function convertGridCoordinate(ox, oy, sweepVec, sweepStart) {
+  const tx = ox.map((v) => v - sweepStart[0]);
+  const ty = oy.map((v) => v - sweepStart[1]);
+  const th = Math.atan2(sweepVec[1], sweepVec[0]);
+  const rot = rotMat2d(th);
+  const rx = [];
+  const ry = [];
+  for (let i = 0; i < tx.length; i++) {
+    const [nx, ny] = applyRot(rot, tx[i], ty[i]);
+    rx.push(nx);
+    ry.push(ny);
+  }
+  return [rx, ry];
+}
+
+function convertGlobalCoordinate(x, y, sweepVec, sweepStart) {
+  const th = Math.atan2(sweepVec[1], sweepVec[0]);
+  const rot = rotMat2d(-th);
+  const rx = [];
+  const ry = [];
+  for (let i = 0; i < x.length; i++) {
+    const [nx, ny] = applyRot(rot, x[i], y[i]);
+    rx.push(nx + sweepStart[0]);
+    ry.push(ny + sweepStart[1]);
+  }
+  return [rx, ry];
+}
+
+function setupGridMap(ox, oy, resolution, sweepDirection) {
+  const width = Math.ceil((Math.max(...ox) - Math.min(...ox)) / resolution) + 10;
+  const height = Math.ceil((Math.max(...oy) - Math.min(...oy)) / resolution) + 10;
+  const centerX = (Math.max(...ox) + Math.min(...ox)) / 2;
+  const centerY = (Math.max(...oy) + Math.min(...oy)) / 2;
+
+  const polygonMercator = {
+    type: "Polygon",
+    coordinates: [ox.map((v, i) => [v, oy[i]])],
+  };
+
+  const gridMap = new GridMap(width, height, resolution, centerX, centerY, polygonMercator);
+
+  let xGoal, goalY;
+  if (sweepDirection === SweepDirection.UP) {
+    [xGoal, goalY] = searchFreeGridIndexAtEdgeY(gridMap, true);
+  } else {
+    [xGoal, goalY] = searchFreeGridIndexAtEdgeY(gridMap, false);
+  }
+
+  return { gridMap, xGoal, goalY };
+}
+
+function sweepPathSearch(sweeper, gridMap) {
+  let [cx, cy] = sweeper.searchStartGrid(gridMap);
+  if (!gridMap.setValue(cx, cy, 0.5)) {
+    return [[], []];
+  }
+
+  let [x, y] = gridMap.indexToWorld(cx, cy);
+  const px = [x];
+  const py = [y];
+
+  while (true) {
+    [cx, cy] = sweeper.moveTargetGrid(cx, cy, gridMap);
+    if (sweeper.isSearchDone(gridMap) || cx === null || cy === null) break;
+    [x, y] = gridMap.indexToWorld(cx, cy);
+    px.push(x);
+    py.push(y);
+    gridMap.setValue(cx, cy, 0.5);
+  }
+
+  return [px, py];
+}
+
+class SweepSearcher {
+  constructor(movingDirection, sweepDirection, xGoal, goalY) {
+    this.movingDirection = movingDirection;
+    this.sweepDirection = sweepDirection;
+    this.updateTurningWindow();
+    this.xGoal = xGoal;
+    this.goalY = goalY;
+  }
+
+  updateTurningWindow() {
+    this.turningWindow = [
+      [this.movingDirection, 0],
+      [this.movingDirection, this.sweepDirection],
+      [0, this.sweepDirection],
+      [-this.movingDirection, this.sweepDirection],
+    ];
+  }
+
+  swapMovingDirection() {
+    this.movingDirection *= -1;
+    this.updateTurningWindow();
+  }
+
+  checkOccupied(ix, iy, gridMap, occupiedVal = 0.5) {
+    return gridMap.checkOccupied(ix, iy, occupiedVal);
+  }
+
+  findSafeTurningGrid(cx, cy, gridMap) {
+    for (const [dx, dy] of this.turningWindow) {
+      const nx = dx + cx;
+      const ny = dy + cy;
+      if (!this.checkOccupied(nx, ny, gridMap)) return [nx, ny];
+    }
+    return [null, null];
+  }
+
+  isSearchDone(gridMap) {
+    for (const ix of this.xGoal) {
+      if (!this.checkOccupied(ix, this.goalY, gridMap)) return false;
+    }
+    return true;
+  }
+
+  searchStartGrid(gridMap) {
+    const [xInds, yInd] = searchFreeGridIndexAtEdgeY(
+      gridMap,
+      this.sweepDirection === SweepDirection.DOWN
+    );
+    if (this.movingDirection === MovingDirection.RIGHT) {
+      return [Math.min(...xInds), yInd];
+    }
+    return [Math.max(...xInds), yInd];
+  }
+
+  moveTargetGrid(cx, cy, gridMap) {
+    let nx = this.movingDirection + cx;
+    let ny = cy;
+    if (!this.checkOccupied(nx, ny, gridMap)) {
+      return [nx, ny];
+    }
+    // need to turn
+    let [tx, ty] = this.findSafeTurningGrid(cx, cy, gridMap);
+    if (tx === null && ty === null) {
+      nx = -this.movingDirection + cx;
+      ny = cy;
+      if (this.checkOccupied(nx, ny, gridMap, 1.0)) {
+        return [null, null];
+      }
+      return [nx, ny];
+    }
+    while (!this.checkOccupied(tx + this.movingDirection, ty, gridMap)) {
+      tx += this.movingDirection;
+    }
+    this.swapMovingDirection();
+    return [tx, ty];
+  }
+}
+
+function coveragePlanningMeters(polygonFeature, resolutionMeters) {
+  if (!polygonFeature) return [];
+  const mercator = turf.toMercator(polygonFeature);
+  const coords =
+    mercator.geometry.type === "Polygon"
+      ? mercator.geometry.coordinates[0]
+      : mercator.geometry.coordinates[0][0];
+
+  if (
+    coords.length &&
+    (coords[0][0] !== coords[coords.length - 1][0] ||
+      coords[0][1] !== coords[coords.length - 1][1])
+  ) {
+    coords.push([...coords[0]]);
+  }
+
+  const ox = coords.map((c) => c[0]);
+  const oy = coords.map((c) => c[1]);
+
+  const { vec: sweepVec, sweepStart } = findSweepDirectionAndStartPosition(ox, oy);
+  const [rox, roy] = convertGridCoordinate(ox, oy, sweepVec, sweepStart);
+  const { gridMap, xGoal, goalY } = setupGridMap(
+    rox,
+    roy,
+    resolutionMeters,
+    SweepDirection.UP
+  );
+  const sweeper = new SweepSearcher(MovingDirection.RIGHT, SweepDirection.UP, xGoal, goalY);
+  const [px, py] = sweepPathSearch(sweeper, gridMap);
+  const [rx, ry] = convertGlobalCoordinate(px, py, sweepVec, sweepStart);
+
+  const latLngs = [];
+  for (let i = 0; i < rx.length; i++) {
+    const [lon, lat] = turf.toWgs84([rx[i], ry[i]]);
+    latLngs.push([lat, lon]);
+  }
+  return latLngs;
+}
+
+function normalizeBoundaryFeature(feature, spacingMeters) {
+  if (!feature || !feature.geometry) return null;
+  const type = feature.geometry.type;
+  if (type === "Polygon" || type === "MultiPolygon") {
+    return feature;
+  }
+  if (type === "LineString" || type === "MultiLineString") {
+    const bufferDistanceKm = Math.max(spacingMeters || 10, 5) / 1000;
+    const buffered = turf.buffer(feature, bufferDistanceKm, { units: "kilometers" });
+    return buffered;
+  }
+  return null;
+}
+
+function GetSpacingMeters() {
+  if (!ShapeSpacingInput) return null;
+  const ValNum = parseFloat(ShapeSpacingInput.value);
+  if (!Number.isFinite(ValNum) || ValNum <= 0) return null;
+  return ValNum;
+}
+
+function PushUniqueCoord(List, CoordArr) {
+  if (!CoordArr || CoordArr.length < 2) return;
+  const Last = List[List.length - 1];
+  if (
+    Last &&
+    Math.abs(Last[0] - CoordArr[0]) < 1e-6 &&
+    Math.abs(Last[1] - CoordArr[1]) < 1e-6
+  ) {
+    return;
+  }
+  List.push([CoordArr[0], CoordArr[1]]);
+}
+
+function SampleLineFeature(LineFeature, SpacingMeters) {
+  const Points = [];
+  if (!LineFeature || !Number.isFinite(SpacingMeters) || SpacingMeters <= 0) {
+    return Points;
+  }
+
+  // Flatten to handle both LineString and MultiLineString
+  turf.flattenEach(LineFeature, (CurFeat) => {
+    const LengthKm = turf.length(CurFeat, { units: "kilometers" });
+    if (!Number.isFinite(LengthKm) || LengthKm <= 0) return;
+
+    const TotalMeters = LengthKm * 1000;
+    for (let Dist = 0; Dist <= TotalMeters; Dist += SpacingMeters) {
+      const Pt = turf.along(CurFeat, Dist / 1000, { units: "kilometers" });
+      if (Pt && Pt.geometry && Pt.geometry.coordinates) {
+        PushUniqueCoord(Points, Pt.geometry.coordinates);
+      }
+    }
+
+    // Ensure the final vertex is included
+    const Coords = CurFeat.geometry && CurFeat.geometry.coordinates;
+    if (Coords && Coords.length) {
+      PushUniqueCoord(Points, Coords[Coords.length - 1]);
+    }
+  });
+
+  return Points;
+}
+
+function GenerateWaypointCoordsFromShape(Feature, SpacingMeters) {
+  if (typeof turf === "undefined") return [];
+  const boundary = normalizeBoundaryFeature(Feature, SpacingMeters);
+  if (!boundary) return [];
+  const pathLatLngs = coveragePlanningMeters(boundary, SpacingMeters);
+  // return as [lng, lat] pairs to match AddWaypoint call below
+  return pathLatLngs.map((ll) => [ll[1], ll[0]]);
+}
+
+function SnapshotSelectedWaypoints() {
+  return Waypoints.filter((Wp) => SelectedIds.has(Wp.Id)).map((Wp) => ({
+    Id: Wp.Id,
+    Lat: Wp.Lat,
+    Lon: Wp.Lon,
+  }));
+}
+
+function RotateSelectedWaypoints(AngleDeg) {
+  const SelectedList = Waypoints.filter((Wp) => SelectedIds.has(Wp.Id));
+  const AngleNum = parseFloat(AngleDeg);
+  if (!Number.isFinite(AngleNum) || SelectedList.length < 2) return;
+
+  // Centroid anchor (average lat/lon)
+  const AnchorLat =
+    SelectedList.reduce((Sum, Wp) => Sum + Wp.Lat, 0) / SelectedList.length;
+  const AnchorLon =
+    SelectedList.reduce((Sum, Wp) => Sum + Wp.Lon, 0) / SelectedList.length;
+
+  const Zoom = MapObj.getZoom();
+  const AnchorPt = MapObj.project([AnchorLat, AnchorLon], Zoom);
+
+  // Leaflet projects to a Y-down plane, so invert angle for intuitive CCW rotation
+  const AngleRad = (-AngleNum * Math.PI) / 180;
+  const CosA = Math.cos(AngleRad);
+  const SinA = Math.sin(AngleRad);
+
+  // Store snapshot for future undo/redo integrations
+  LastRotationSnapshot = SnapshotSelectedWaypoints();
+
+  SelectedList.forEach((Wp) => {
+    const Pt = MapObj.project([Wp.Lat, Wp.Lon], Zoom);
+    const X0 = Pt.x - AnchorPt.x;
+    const Y0 = Pt.y - AnchorPt.y;
+
+    const X1 = X0 * CosA - Y0 * SinA;
+    const Y1 = X0 * SinA + Y0 * CosA;
+
+    const RotatedLatLng = MapObj.unproject(
+      L.point(X1 + AnchorPt.x, Y1 + AnchorPt.y),
+      Zoom
+    );
+    Wp.Lat = RotatedLatLng.lat;
+    Wp.Lon = RotatedLatLng.lng;
+  });
+
+  RenderAll();
+}
+
 function MarkerIcon(Label, IsSelected) {
   return L.divIcon({
     className: "wpMarker" + (IsSelected ? " wpMarkerSelected" : ""),
@@ -161,6 +714,60 @@ function MarkerIcon(Label, IsSelected) {
 function UpdatePolyline() {
   const LatLngs = Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
   WaypointLine.setLatLngs(LatLngs);
+}
+
+function GetFirstDrawnFeature() {
+  let GeoJson = null;
+  DrawnItems.eachLayer((Layer) => {
+    if (!GeoJson) {
+      GeoJson = Layer.toGeoJSON();
+    }
+  });
+  return GeoJson;
+}
+
+function GenerateWaypointsFromDrawnShape() {
+  const SpacingMeters = GetSpacingMeters();
+  const ShapeFeature = GetFirstDrawnFeature();
+  if (!SpacingMeters || !ShapeFeature) return;
+
+  const Points = GenerateWaypointCoordsFromShape(ShapeFeature, SpacingMeters);
+  if (!Points.length) return;
+
+  SelectedIds.clear();
+  Points.forEach((Coord) => {
+    AddWaypoint(Coord[1], Coord[0], { selectionMode: "add", skipRender: true });
+  });
+
+  RenderAll();
+  DrawnItems.clearLayers();
+  UpdateToolsUi();
+}
+
+function UpdateToolsUi() {
+  const HasShape = DrawnItems && DrawnItems.getLayers().length > 0;
+  const SpacingValid = GetSpacingMeters() !== null;
+  const HasRotationSelection = SelectedIds.size >= 2;
+  const AngleValid =
+    RotationInput && Number.isFinite(parseFloat(RotationInput.value));
+  const IsDrawingLine = ActiveDrawMode === "polyline";
+  const IsDrawingPoly = ActiveDrawMode === "polygon";
+
+  if (GenerateFromShapeBtn) {
+    GenerateFromShapeBtn.disabled = !HasShape || !SpacingValid;
+  }
+  if (ClearShapesBtn) {
+    ClearShapesBtn.disabled = !HasShape;
+  }
+  if (ApplyRotationBtn) {
+    ApplyRotationBtn.disabled = !(HasRotationSelection && AngleValid);
+  }
+  if (DrawLineBtn) {
+    DrawLineBtn.classList.toggle("active", IsDrawingLine);
+  }
+  if (DrawPolygonBtn) {
+    DrawPolygonBtn.classList.toggle("active", IsDrawingPoly);
+  }
 }
 
 function RefreshMarkers() {
@@ -213,7 +820,8 @@ function RefreshMarkers() {
   }
 }
 
-function AddWaypoint(LatNum, LonNum) {
+function AddWaypoint(LatNum, LonNum, Options) {
+  const Opts = Options || {};
   const NewWp = {
     Id: "wp-" + NextWaypointId++,
     Lat: LatNum,
@@ -226,9 +834,20 @@ function AddWaypoint(LatNum, LonNum) {
     UseGlobalSpeed: true,
   };
   Waypoints.push(NewWp);
-  SelectedIds.clear();
-  SelectedIds.add(NewWp.Id);
-  RenderAll();
+
+  const SelectionMode = Opts.selectionMode || "replace"; // replace | add | none
+  if (SelectionMode === "replace") {
+    SelectedIds.clear();
+    SelectedIds.add(NewWp.Id);
+  } else if (SelectionMode === "add") {
+    SelectedIds.add(NewWp.Id);
+  }
+
+  if (!Opts.skipRender) {
+    RenderAll();
+  }
+
+  return NewWp;
 }
 
 function DeleteWaypoint(WpId) {
@@ -426,6 +1045,9 @@ function RenderAll() {
   RenderWaypointList();
   RefreshMarkers();
   UpdatePolyline();
+  UpdateToolsUi();
+  UpdateLeftPanelUi();
+  UpdateRightPanelUi();
 }
 
 // ----- Nominatim search (OpenStreetMap geocoder) -----
@@ -491,9 +1113,78 @@ SearchInput.addEventListener("keydown", (Ev) => {
   }
 });
 
+// Drawing events: keep only one active shape and enable tools
+MapObj.on(L.Draw.Event.CREATED, (Ev) => {
+  DrawnItems.clearLayers();
+  DrawnItems.addLayer(Ev.layer);
+  StopActiveDrawing();
+  UpdateToolsUi();
+});
+
+MapObj.on(L.Draw.Event.DELETED, () => {
+  UpdateToolsUi();
+});
+MapObj.on(L.Draw.Event.EDITED, () => {
+  UpdateToolsUi();
+});
+MapObj.on(L.Draw.Event.DRAWSTOP, () => {
+  StopActiveDrawing();
+  UpdateToolsUi();
+});
+
+// Shape tool buttons
+if (GenerateFromShapeBtn) {
+  GenerateFromShapeBtn.addEventListener("click", () => {
+    GenerateWaypointsFromDrawnShape();
+  });
+}
+
+if (ClearShapesBtn) {
+  ClearShapesBtn.addEventListener("click", () => {
+    DrawnItems.clearLayers();
+    UpdateToolsUi();
+  });
+}
+
+if (ShapeSpacingInput) {
+  ShapeSpacingInput.addEventListener("change", () => {
+    UpdateToolsUi();
+  });
+}
+
+if (DrawLineBtn) {
+  DrawLineBtn.addEventListener("click", () => {
+    StartDrawing("polyline");
+  });
+}
+
+if (DrawPolygonBtn) {
+  DrawPolygonBtn.addEventListener("click", () => {
+    StartDrawing("polygon");
+  });
+}
+
+if (ApplyRotationBtn) {
+  ApplyRotationBtn.addEventListener("click", () => {
+    RotateSelectedWaypoints(RotationInput ? RotationInput.value : 0);
+  });
+}
+
+if (RotationInput) {
+  RotationInput.addEventListener("input", UpdateToolsUi);
+  RotationInput.addEventListener("change", UpdateToolsUi);
+}
+
 // Click on map: clear search results and add a waypoint
 MapObj.on("click", (Ev) => {
   ClearResults();
+  if (ActiveDrawer) {
+    // If currently drawing, try to finish polygon; do not add waypoint
+    if (TryFinishPolygonOnFirstPoint(Ev)) {
+      return;
+    }
+    return;
+  }
   AddWaypoint(Ev.latlng.lat, Ev.latlng.lng);
 });
 
@@ -503,6 +1194,37 @@ if (WaypointPanelHeader) {
   WaypointPanelHeader.addEventListener("click", () => {
     IsWaypointPanelOpen = !IsWaypointPanelOpen;
     RenderWaypointList();
+  });
+}
+
+if (ToggleWaypointsBtn) {
+  ToggleWaypointsBtn.addEventListener("click", () => {
+    if (ActiveLeftPane === "waypoints" && LeftPanelOpen) {
+      LeftPanelOpen = false;
+    } else {
+      ActiveLeftPane = "waypoints";
+      LeftPanelOpen = true;
+    }
+    UpdateLeftPanelUi();
+  });
+}
+
+if (ToggleSettingsBtn) {
+  ToggleSettingsBtn.addEventListener("click", () => {
+    if (ActiveLeftPane === "settings" && LeftPanelOpen) {
+      LeftPanelOpen = false;
+    } else {
+      ActiveLeftPane = "settings";
+      LeftPanelOpen = true;
+    }
+    UpdateLeftPanelUi();
+  });
+}
+
+if (ToggleToolsBtn) {
+  ToggleToolsBtn.addEventListener("click", () => {
+    ToolsPanelOpen = !ToolsPanelOpen;
+    UpdateRightPanelUi();
   });
 }
 
