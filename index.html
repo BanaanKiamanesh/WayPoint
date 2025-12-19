@@ -1,24 +1,411 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
+
 <head>
-    <meta charset="utf-8">
-    <title>WayPoint - Python Powered</title>
-    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
-    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Waypoint KMZ Planner - MVP</title>
+
+    <!-- Leaflet (OpenStreetMap map renderer) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <style>
+        :root {
+            --panel-bg: rgba(20, 20, 20, 0.82);
+            --panel-border: rgba(255, 255, 255, 0.12);
+            --text: #f2f2f2;
+            --muted: rgba(255, 255, 255, 0.75);
+            --danger: #ff5a5a;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        .topbar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+            pointer-events: none;
+        }
+
+        .searchBox {
+            pointer-events: auto;
+            max-width: 760px;
+            width: 100%;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(8px);
+        }
+
+        .searchRow {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .searchRow input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(0, 0, 0, 0.25);
+            color: var(--text);
+            outline: none;
+            font-size: 14px;
+        }
+
+        .searchRow button {
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.10);
+            color: var(--text);
+            cursor: pointer;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .searchRow button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .results {
+            border-top: 1px solid var(--panel-border);
+            max-height: 260px;
+            overflow: auto;
+        }
+
+        .resultItem {
+            padding: 10px 12px;
+            cursor: pointer;
+            color: var(--text);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            line-height: 1.25;
+        }
+
+        .resultItem:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .resultMain {
+            font-size: 14px;
+            font-weight: 650;
+        }
+
+        .resultSub {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 3px;
+        }
+
+        .status {
+            pointer-events: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            color: var(--muted);
+            min-width: 230px;
+            max-width: 420px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(8px);
+        }
+
+        .status strong {
+            color: var(--text);
+        }
+
+        .status .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: #7cff7c;
+            flex: 0 0 auto;
+        }
+
+        .status .dot.busy {
+            background: #ffd24d;
+        }
+
+        .status .dot.err {
+            background: var(--danger);
+        }
+
+        .attributionHint {
+            position: absolute;
+            left: 12px;
+            bottom: 12px;
+            z-index: 1000;
+            pointer-events: none;
+            color: rgba(0, 0, 0, 0.0);
+        }
+
+        /* Make Leaflet controls nicer over dark overlays */
+        .leaflet-control-zoom a {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 520px) {
+            .topbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .status {
+                min-width: unset;
+            }
+        }
+    </style>
 </head>
+
 <body>
-    <h1>WayPoint - Python in Browser!</h1>
-    
-    <button id="calc-btn" pys-onClick="calculate">Calculate 25 * 4 + 10</button>
-    <div id="result"></div>
+    <div id="map"></div>
 
-    <py-script>
-import js
-from pyscript import document
+    <div class="topbar">
+        <div class="searchBox">
+            <div class="searchRow">
+                <input id="SearchInput" type="text" placeholder="Search a place (city, address, landmark)"
+                    autocomplete="off" />
+                <button id="SearchBtn" type="button">Search</button>
+                <button id="ClearBtn" type="button" title="Clear results">Clear</button>
+            </div>
+            <div id="Results" class="results" style="display:none"></div>
+        </div>
 
-def calculate(event):
-    result = 25 * 4 + 10
-    document.getElementById("result").innerText = f"Result: {result}"
-    </py-script>
+        <div id="Status" class="status" aria-live="polite">
+            <span class="dot" id="StatusDot"></span>
+            <div>
+                <div><strong>Ready.</strong> Pan/zoom and search.</div>
+                <div style="font-size:12px">Map: OpenStreetMap tiles</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // ----- Map setup -----
+        const MapObj = L.map("map", {
+            zoomControl: true,
+            preferCanvas: true
+        }).setView([41.9028, 12.4964], 12); // Rome default
+
+        // OSM tile layer
+        const OsmTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors"
+        });
+        OsmTiles.addTo(MapObj);
+
+        // Marker for search result
+        let SearchMarker = null;
+
+        // ----- UI elements -----
+        const SearchInput = document.getElementById("SearchInput");
+        const SearchBtn = document.getElementById("SearchBtn");
+        const ClearBtn = document.getElementById("ClearBtn");
+        const ResultsDiv = document.getElementById("Results");
+        const StatusDiv = document.getElementById("Status");
+        const StatusDot = document.getElementById("StatusDot");
+
+        // ----- Helpers -----
+        function SetStatus(State, Title, Detail) {
+            // State: "ok" | "busy" | "err"
+            StatusDot.classList.remove("busy");
+            StatusDot.classList.remove("err");
+            if (State === "busy") StatusDot.classList.add("busy");
+            if (State === "err") StatusDot.classList.add("err");
+
+            StatusDiv.innerHTML =
+                '<span class="dot ' + (State === "busy" ? "busy" : (State === "err" ? "err" : "")) + '" id="StatusDot"></span>' +
+                '<div>' +
+                '<div><strong>' + EscapeHtml(Title) + '</strong></div>' +
+                '<div style="font-size:12px">' + EscapeHtml(Detail || "") + '</div>' +
+                '</div>';
+        }
+
+        function EscapeHtml(Str) {
+            return String(Str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function ClearResults() {
+            ResultsDiv.innerHTML = "";
+            ResultsDiv.style.display = "none";
+        }
+
+        function ShowResults(ResultsArr) {
+            if (!ResultsArr || ResultsArr.length === 0) {
+                ResultsDiv.innerHTML = "<div class=\"resultItem\"><div class=\"resultMain\">No results</div><div class=\"resultSub\">Try a different query.</div></div>";
+                ResultsDiv.style.display = "block";
+                return;
+            }
+
+            ResultsDiv.innerHTML = "";
+            for (const Item of ResultsArr) {
+                const MainText = Item.display_name || "(unknown)";
+                const SubText = [Item.type, Item.class].filter(Boolean).join(" / ");
+
+                const Row = document.createElement("div");
+                Row.className = "resultItem";
+                Row.innerHTML =
+                    '<div class="resultMain">' + EscapeHtml(MainText) + '</div>' +
+                    '<div class="resultSub">' + EscapeHtml(SubText) + '</div>';
+
+                Row.addEventListener("click", () => {
+                    const LatNum = parseFloat(Item.lat);
+                    const LonNum = parseFloat(Item.lon);
+                    if (!Number.isFinite(LatNum) || !Number.isFinite(LonNum)) return;
+
+                    if (SearchMarker) {
+                        MapObj.removeLayer(SearchMarker);
+                        SearchMarker = null;
+                    }
+
+                    SearchMarker = L.marker([LatNum, LonNum]).addTo(MapObj);
+                    SearchMarker.bindPopup(EscapeHtml(MainText)).openPopup();
+
+                    const Bb = Item.boundingbox;
+                    if (Bb && Bb.length === 4) {
+                        const South = parseFloat(Bb[0]);
+                        const North = parseFloat(Bb[1]);
+                        const West = parseFloat(Bb[2]);
+                        const East = parseFloat(Bb[3]);
+                        if ([South, North, West, East].every(Number.isFinite)) {
+                            MapObj.fitBounds([[South, West], [North, East]], { padding: [30, 30] });
+                        } else {
+                            MapObj.setView([LatNum, LonNum], 16);
+                        }
+                    } else {
+                        MapObj.setView([LatNum, LonNum], 16);
+                    }
+
+                    ClearResults();
+                    SetStatus("ok", "Centered on result", MainText);
+                });
+
+                ResultsDiv.appendChild(Row);
+            }
+
+            ResultsDiv.style.display = "block";
+        }
+
+        // ----- Nominatim search (OpenStreetMap geocoder) -----
+        // IMPORTANT:
+        // - This is a simple MVP that calls the public Nominatim endpoint.
+        // - Keep request volume low (debounce, no continuous typing queries).
+        // - For production, consider your own hosted geocoder or a provider with an API key.
+
+        let LastSearchTs = 0;
+
+        async function RunSearch() {
+            const QueryText = (SearchInput.value || "").trim();
+            if (!QueryText) {
+                SetStatus("err", "Enter a search query", "Example: Colosseum Rome");
+                return;
+            }
+
+            // Very simple client-side throttle: at most 1 request per 1.2 seconds
+            const NowTs = Date.now();
+            if (NowTs - LastSearchTs < 1200) {
+                SetStatus("err", "Too fast", "Please wait a moment and try again.");
+                return;
+            }
+            LastSearchTs = NowTs;
+
+            SearchBtn.disabled = true;
+            SetStatus("busy", "Searching", QueryText);
+
+            try {
+                const UrlObj = new URL("https://nominatim.openstreetmap.org/search");
+                UrlObj.searchParams.set("format", "jsonv2");
+                UrlObj.searchParams.set("q", QueryText);
+                UrlObj.searchParams.set("limit", "6");
+                UrlObj.searchParams.set("addressdetails", "1");
+
+                const Resp = await fetch(UrlObj.toString(), {
+                    method: "GET",
+                    headers: {
+                        "Accept": "application/json"
+                    }
+                });
+
+                if (!Resp.ok) {
+                    throw new Error("HTTP " + Resp.status);
+                }
+
+                const JsonObj = await Resp.json();
+                ShowResults(JsonObj);
+                SetStatus("ok", "Search results", "Click a result to zoom.");
+            } catch (ErrObj) {
+                ClearResults();
+                SetStatus("err", "Search failed", String(ErrObj && ErrObj.message ? ErrObj.message : ErrObj));
+            } finally {
+                SearchBtn.disabled = false;
+            }
+        }
+
+        // ----- Wire up events -----
+        SearchBtn.addEventListener("click", RunSearch);
+
+        SearchInput.addEventListener("keydown", (Ev) => {
+            if (Ev.key === "Enter") {
+                Ev.preventDefault();
+                RunSearch();
+            }
+            if (Ev.key === "Escape") {
+                ClearResults();
+            }
+        });
+
+        ClearBtn.addEventListener("click", () => {
+            SearchInput.value = "";
+            ClearResults();
+            if (SearchMarker) {
+                MapObj.removeLayer(SearchMarker);
+                SearchMarker = null;
+            }
+            SetStatus("ok", "Cleared", "Ready.");
+        });
+
+        // Click on map closes results
+        MapObj.on("click", () => {
+            ClearResults();
+        });
+
+        // Initial status
+        SetStatus("ok", "Ready", "Search a place to jump there.");
+    </script>
 </body>
+
 </html>
