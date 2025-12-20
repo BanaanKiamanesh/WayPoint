@@ -39,6 +39,7 @@
             <div class="panelTitle">Waypoints</div>
             <div class="panelHint">Click on the map to add</div>
           </div>
+          <div id="TravelTimeSummary" class="travelSummary"></div>
           <div id="WaypointList" class="panelBody"></div>
         </div>
 
@@ -84,32 +85,60 @@
           <div class="panelTitle">Tools</div>
           <div class="panelHint">Shapes & rotation</div>
         </div>
-      <div class="panelBody settingsBody">
+        <div class="panelBody settingsBody">
         <div class="toolSection">
           <div class="toolTitle">Draw shape</div>
           <div class="settingsRow buttonRow">
             <button id="DrawLineBtn" type="button" class="toolButton">Line</button>
             <button id="DrawPolygonBtn" type="button" class="toolButton">Polygon</button>
+            <button id="DrawEllipseBtn" type="button" class="toolButton">Ellipse</button>
           </div>
-          <div class="settingsHint">Set a boundary (line will be buffered) and finish on the map.</div>
         </div>
 
         <div class="settingsDivider"></div>
 
-        <div class="toolSection">
-          <div class="toolTitle">Shape tools</div>
-          <div class="settingsRow inlineRow">
-            <label class="settingsLabel" for="ShapeSpacingInput">Spacing (m)</label>
-            <input id="ShapeSpacingInput" type="number" min="1" step="1" value="30" />
+          <div class="toolSection">
+            <div class="toolTitle">Shape tools</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="ShapeSpacingInput">Spacing (m)</label>
+              <input id="ShapeSpacingInput" type="number" min="1" step="1" value="30" />
+          </div>
+          <div class="settingsRow">
+            <label class="settingsLabel" for="ShapeResolutionSlider">Resolution (m)</label>
+            <input
+              id="ShapeResolutionSlider"
+              type="range"
+              min="0"
+              max="200"
+              step="1"
+              value="30"
+            />
+            <div class="resolutionValue" id="ShapeResolutionValue">30 m</div>
           </div>
           <div class="settingsRow buttonRow">
-            <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate waypoints</button>
+            <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
+            <button id="ConfirmShapeBtn" type="button" class="toolButton secondary">Confirm</button>
             <button id="ClearShapesBtn" type="button" class="toolButton secondary">
-              Clear shape
+              Clear
             </button>
           </div>
-          <div class="settingsHint">Generate a coverage path inside the boundary using the spacing above.</div>
-        </div>
+
+          <div class="settingsDivider"></div>
+          <div class="toolTitle">Ellipse options</div>
+          <div class="settingsRow buttonRow">
+            <button id="EllipseModeBoundaryBtn" type="button" class="toolButton">Border mode</button>
+            <button id="EllipseModeCircBtn" type="button" class="toolButton secondary">Circumference</button>
+          </div>
+          <div class="settingsRow inlineRow">
+            <label class="settingsLabel" for="EllipseResolutionInput">Circumf. spacing (m)</label>
+            <input id="EllipseResolutionInput" type="number" min="0" step="1" value="20" />
+          </div>
+          <div class="settingsRow inlineRow">
+            <label class="settingsLabel" for="EllipseRotationInput">Rotation (deg)</label>
+            <input id="EllipseRotationInput" type="number" step="1" value="0" />
+          </div>
+          <div class="settingsHint">Ellipse: click center then radius; drag handles to adjust.</div>
+          </div>
 
           <div class="settingsDivider"></div>
 
@@ -163,6 +192,8 @@
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="js/coverage.js"></script>
+    <script src="js/ellipse.js"></script>
 
     <!-- Custom scripts -->
     <script src="js/main.js"></script>

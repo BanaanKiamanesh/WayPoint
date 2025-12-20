@@ -44,6 +44,7 @@ const DrawOptions = {
 
 let ActiveDrawer = null;
 let ActiveDrawMode = null;
+let BoundaryConfirmed = false;
 
 // Marker for search result
 let SearchMarker = null;
@@ -55,15 +56,19 @@ const ResultsDiv = document.getElementById("Results");
 const WaypointSidebar = document.getElementById("WaypointSidebar");
 const SettingsPanelLeft = document.getElementById("SettingsPanelLeft");
 const WaypointListDiv = document.getElementById("WaypointList");
+const TravelTimeSummary = document.getElementById("TravelTimeSummary");
 const WaypointPanelHeader = document.getElementById("WaypointPanelHeader");
 const UnitRadios = document.querySelectorAll('input[name="Units"]');
 const GlobalAltInput = document.getElementById("GlobalAltInput");
 const GlobalSpeedInput = document.getElementById("GlobalSpeedInput");
 const ShapeSpacingInput = document.getElementById("ShapeSpacingInput");
+const ShapeResolutionSlider = document.getElementById("ShapeResolutionSlider");
+const ShapeResolutionValue = document.getElementById("ShapeResolutionValue");
 const GenerateFromShapeBtn = document.getElementById("GenerateFromShapeBtn");
 const ClearShapesBtn = document.getElementById("ClearShapesBtn");
 const RotationInput = document.getElementById("RotationInput");
 const ApplyRotationBtn = document.getElementById("ApplyRotationBtn");
+const ConfirmShapeBtn = document.getElementById("ConfirmShapeBtn");
 const LeftControlsWrap = document.getElementById("LeftControls");
 const ToggleWaypointsBtn = document.getElementById("ToggleWaypointsBtn");
 const ToggleSettingsBtn = document.getElementById("ToggleSettingsBtn");
@@ -71,6 +76,11 @@ const RightControlsWrap = document.getElementById("RightControls");
 const ToggleToolsBtn = document.getElementById("ToggleToolsBtn");
 const DrawLineBtn = document.getElementById("DrawLineBtn");
 const DrawPolygonBtn = document.getElementById("DrawPolygonBtn");
+const DrawEllipseBtn = document.getElementById("DrawEllipseBtn");
+const EllipseModeBoundaryBtn = document.getElementById("EllipseModeBoundaryBtn");
+const EllipseModeCircBtn = document.getElementById("EllipseModeCircBtn");
+const EllipseResolutionInput = document.getElementById("EllipseResolutionInput");
+const EllipseRotationInput = document.getElementById("EllipseRotationInput");
 
 // ----- Waypoint state -----
 const Waypoints = [];
@@ -83,6 +93,10 @@ let ToolsPanelOpen = false;
 let NextWaypointId = 1;
 const MarkerById = new Map();
 let LastRotationSnapshot = null; // Reserved for future undo/redo of transforms
+let LastCoverageModel = null; // stores resolution model for current boundary/path
+let LastBoundaryFeature = null; // normalized boundary in WGS84 for replacement/removal
+let EllipseState = null;
+let EllipseMode = "boundary"; // boundary | circumference
 const WaypointLine = L.polyline([], {
   color: "#4db3ff",
   weight: 3,
@@ -91,7 +105,7 @@ const WaypointLine = L.polyline([], {
 WaypointLine.addTo(MapObj);
 
 const DEFAULT_ALT = 50;
-const DEFAULT_SPEED = 8;
+const DEFAULT_SPEED = 10;
 const DEFAULT_HEADING = 0;
 const DEFAULT_GIMBAL = 0;
 const SettingsState = {
@@ -214,15 +228,39 @@ function StopActiveDrawing() {
   }
   ActiveDrawer = null;
   ActiveDrawMode = null;
+  clearEllipseHandles();
+}
+
+function HasBoundaryShape() {
+  return DrawnItems && DrawnItems.getLayers().length > 0;
+}
+
+function ConfirmReplaceBoundary() {
+  if (!HasBoundaryShape()) return true;
+  return window.confirm("Replace existing boundary shape?");
 }
 
 function StartDrawing(Mode) {
   StopActiveDrawing();
 
+  if (!ConfirmReplaceBoundary()) {
+    return;
+  }
+  DrawnItems.clearLayers();
+  BoundaryConfirmed = false;
+  LastCoverageModel = null;
+  LastBoundaryFeature = null;
+  UpdateToolsUi();
+
   if (Mode === "polyline") {
     ActiveDrawer = new L.Draw.Polyline(MapObj, DrawOptions.polyline);
   } else if (Mode === "polygon") {
     ActiveDrawer = new L.Draw.Polygon(MapObj, DrawOptions.polygon);
+  } else if (Mode === "ellipse") {
+    ActiveDrawMode = "ellipse";
+    startEllipseInteraction();
+    UpdateToolsUi();
+    return;
   } else {
     return;
   }
@@ -260,320 +298,204 @@ function TryFinishPolygonOnFirstPoint(Ev) {
   return false;
 }
 
-// ----- Coverage planning utilities (ported to JS) -----
-const SweepDirection = {
-  UP: 1,
-  DOWN: -1,
-};
-
-const MovingDirection = {
-  RIGHT: 1,
-  LEFT: -1,
-};
-
-function rotMat2d(th) {
-  const c = Math.cos(th);
-  const s = Math.sin(th);
-  return [
-    [c, -s],
-    [s, c],
-  ];
+function clearEllipseHandles() {
+  if (EllipseState && EllipseState.handles) {
+    EllipseState.handles.forEach((h) => MapObj.removeLayer(h));
+    EllipseState.handles = [];
+  }
+  if (EllipseState && EllipseState.moveHandler) {
+    MapObj.off("mousemove", EllipseState.moveHandler);
+    EllipseState.moveHandler = null;
+  }
+  if (EllipseState && EllipseState.clickHandler) {
+    MapObj.off("click", EllipseState.clickHandler);
+    EllipseState.clickHandler = null;
+  }
 }
 
-function applyRot(mat, x, y) {
-  return [mat[0][0] * x + mat[0][1] * y, mat[1][0] * x + mat[1][1] * y];
+function updateEllipseLayer() {
+  if (!EllipseState || !EllipseState.center) return;
+  const pts = computeEllipsePoints(
+    [EllipseState.center.lat, EllipseState.center.lng],
+    EllipseState.rx || 10,
+    EllipseState.ry || 10,
+    EllipseState.rotationDeg || 0
+  );
+  DrawnItems.clearLayers();
+  const poly = L.polygon(pts, { color: "#9b5de5", weight: 2, fillOpacity: 0.1 });
+  DrawnItems.addLayer(poly);
+  LastBoundaryFeature = poly.toGeoJSON();
+  LastCoverageModel = null;
 }
 
-class GridMap {
-  constructor(width, height, resolution, centerX, centerY, polygonMercator) {
-    this.width = width;
-    this.height = height;
-    this.resolution = resolution;
-    this.centerX = centerX;
-    this.centerY = centerY;
-    this.data = Array.from({ length: height }, () => new Float32Array(width));
-    this.polygon = polygonMercator;
-    this.setPolygonFreeArea();
-  }
+function createHandle(latlng, onDrag, onDragEnd, variant = "default") {
+  const isRotation = variant === "rotate";
+  const html = isRotation
+    ? '<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:#ff8c00;font-size:18px;transform:rotate(-20deg);text-shadow:0 0 6px rgba(0,0,0,0.6);">&#8635;</div>'
+    : '<div style="width:12px;height:12px;border-radius:6px;background:#ff8c00;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>';
+  const marker = L.marker(latlng, {
+    draggable: true,
+    icon: L.divIcon({
+      className: "ellipseHandle",
+      html,
+      iconSize: isRotation ? [22, 22] : [14, 14],
+      iconAnchor: isRotation ? [11, 11] : [7, 7],
+    }),
+  });
+  if (onDrag) marker.on("drag", (ev) => onDrag(ev.latlng));
+  if (onDragEnd) marker.on("dragend", (ev) => onDragEnd(ev.latlng));
+  marker.addTo(MapObj);
+  return marker;
+}
 
-  worldToIndex(x, y) {
-    const ix = Math.round((x - this.centerX) / this.resolution + this.width / 2);
-    const iy = Math.round((y - this.centerY) / this.resolution + this.height / 2);
-    return [ix, iy];
-  }
+function refreshHandles() {
+  if (!EllipseState) return;
+  clearEllipseHandles();
+  const center = EllipseState.center;
+  if (!center) return;
+  const rotRad = (EllipseState.rotationDeg || 0) * (Math.PI / 180);
+  const rx = EllipseState.rx || 10;
+  const ry = EllipseState.ry || 10;
 
-  indexToWorld(ix, iy) {
-    const x = (ix - this.width / 2) * this.resolution + this.centerX;
-    const y = (iy - this.height / 2) * this.resolution + this.centerY;
-    return [x, y];
-  }
+  // Axis end points in local frame, then rotate to world
+  const axisX = rotateXY(rx, 0, rotRad);
+  const axisY = rotateXY(0, ry, rotRad);
+  const rotVec = rotateXY(rx * 1.2, 0, rotRad);
 
-  checkOccupied(ix, iy, occupiedVal = 0.5) {
-    ix = Math.trunc(ix);
-    iy = Math.trunc(iy);
-    if (ix < 0 || ix >= this.width || iy < 0 || iy >= this.height) return true;
-    return this.data[iy][ix] >= occupiedVal;
-  }
+  const east = localMetersToLatLng(center, axisX[0], axisX[1]);
+  const north = localMetersToLatLng(center, axisY[0], axisY[1]);
+  const rotHandle = localMetersToLatLng(center, rotVec[0], rotVec[1]);
 
-  setValue(ix, iy, val) {
-    ix = Math.trunc(ix);
-    iy = Math.trunc(iy);
-    if (ix < 0 || ix >= this.width || iy < 0 || iy >= this.height) return false;
-    this.data[iy][ix] = val;
-    return true;
-  }
+  const centerHandle = createHandle(
+    center,
+    (ll) => {
+      EllipseState.center = ll;
+      updateEllipseLayer();
+    },
+    () => refreshHandles()
+  );
 
-  setPolygonFreeArea() {
-    const poly =
-      this.polygon && this.polygon.type === "Feature"
-        ? this.polygon
-        : {
-            type: "Feature",
-            geometry: this.polygon,
-            properties: {},
-          };
-    if (!poly) return;
-    for (let iy = 0; iy < this.height; iy++) {
-      for (let ix = 0; ix < this.width; ix++) {
-        const [x, y] = this.indexToWorld(ix, iy);
-        const inside = turf.booleanPointInPolygon([x, y], poly);
-        if (!inside) {
-          this.data[iy][ix] = 1;
-        }
+  const rxHandle = createHandle(
+    east,
+    (ll) => {
+      const { x, y } = latLngToLocalMeters(center, ll);
+      const [xr] = rotateXY(x, y, -rotRad);
+      EllipseState.rx = Math.max(1, Math.abs(xr));
+      updateEllipseLayer();
+      const snappedVec = rotateXY(EllipseState.rx, 0, rotRad);
+      rxHandle.setLatLng(localMetersToLatLng(center, snappedVec[0], snappedVec[1]));
+    },
+    () => refreshHandles()
+  );
+
+  const ryHandle = createHandle(
+    north,
+    (ll) => {
+      const { x, y } = latLngToLocalMeters(center, ll);
+      const [, yr] = rotateXY(x, y, -rotRad);
+      EllipseState.ry = Math.max(1, Math.abs(yr));
+      updateEllipseLayer();
+      const vec = rotateXY(0, EllipseState.ry, rotRad);
+      ryHandle.setLatLng(localMetersToLatLng(center, vec[0], vec[1]));
+    },
+    () => refreshHandles()
+  );
+
+  const rotHandleMarker = createHandle(
+    rotHandle,
+    (ll) => {
+      const { x, y } = latLngToLocalMeters(center, ll);
+      const ang = (Math.atan2(y, x) * 180) / Math.PI;
+      EllipseState.rotationDeg = (ang + 360) % 360;
+      updateEllipseLayer();
+      const vec = rotateXY(rx * 1.2, 0, (EllipseState.rotationDeg * Math.PI) / 180);
+      rotHandleMarker.setLatLng(localMetersToLatLng(center, vec[0], vec[1]));
+    },
+    () => refreshHandles(),
+    "rotate"
+  );
+
+  EllipseState.handles.push(centerHandle, rxHandle, ryHandle, rotHandleMarker);
+}
+
+function startEllipseInteraction() {
+  EllipseState = {
+    center: null,
+    rx: 30,
+    ry: 30,
+    rotationDeg: 0,
+    handles: [],
+    moveHandler: null,
+    clickHandler: null,
+  };
+  let step = 0;
+
+  const clickHandler = (ev) => {
+    if (ActiveDrawMode !== "ellipse") return;
+    if (step === 0) {
+      EllipseState.center = ev.latlng;
+      // live preview radius: follow mouse
+      const moveHandler = (mv) => {
+        if (!EllipseState.center) return;
+        const dist =
+          turf.distance(
+            [EllipseState.center.lng, EllipseState.center.lat],
+            [mv.latlng.lng, mv.latlng.lat],
+            { units: "kilometers" }
+          ) * 1000;
+        EllipseState.rx = Math.max(1, dist);
+        EllipseState.ry = Math.max(1, dist);
+        updateEllipseLayer();
+      };
+      EllipseState.moveHandler = moveHandler;
+      MapObj.on("mousemove", moveHandler);
+      step = 1;
+    } else if (step === 1) {
+      const d = turf.distance(
+        [EllipseState.center.lng, EllipseState.center.lat],
+        [ev.latlng.lng, ev.latlng.lat],
+        { units: "kilometers" }
+      );
+      EllipseState.rx = Math.max(1, d * 1000);
+      EllipseState.ry = EllipseState.rx;
+      updateEllipseLayer();
+      refreshHandles();
+      if (EllipseState.moveHandler) {
+        MapObj.off("mousemove", EllipseState.moveHandler);
+        EllipseState.moveHandler = null;
       }
+      step = 2;
+      ActiveDrawMode = null;
+      MapObj.off("click", clickHandler);
+      EllipseState.clickHandler = null;
+      UpdateToolsUi();
     }
-  }
-}
-
-function searchFreeGridIndexAtEdgeY(gridMap, fromUpper = false) {
-  const yRange = fromUpper
-    ? [...Array(gridMap.height).keys()].reverse()
-    : [...Array(gridMap.height).keys()];
-  const xRange = fromUpper
-    ? [...Array(gridMap.width).keys()].reverse()
-    : [...Array(gridMap.width).keys()];
-
-  let yIndex = null;
-  const xIndexes = [];
-
-  for (const iy of yRange) {
-    for (const ix of xRange) {
-      if (!gridMap.checkOccupied(ix, iy)) {
-        yIndex = iy;
-        xIndexes.push(ix);
-      }
-    }
-    if (yIndex !== null) break;
-  }
-
-  return [xIndexes, yIndex];
-}
-
-function findSweepDirectionAndStartPosition(ox, oy) {
-  let maxDist = 0;
-  let vec = [0, 0];
-  let sweepStart = [0, 0];
-  for (let i = 0; i < ox.length - 1; i++) {
-    const dx = ox[i + 1] - ox[i];
-    const dy = oy[i + 1] - oy[i];
-    const d = Math.hypot(dx, dy);
-    if (d > maxDist) {
-      maxDist = d;
-      vec = [dx, dy];
-      sweepStart = [ox[i], oy[i]];
-    }
-  }
-  return { vec, sweepStart };
-}
-
-function convertGridCoordinate(ox, oy, sweepVec, sweepStart) {
-  const tx = ox.map((v) => v - sweepStart[0]);
-  const ty = oy.map((v) => v - sweepStart[1]);
-  const th = Math.atan2(sweepVec[1], sweepVec[0]);
-  const rot = rotMat2d(th);
-  const rx = [];
-  const ry = [];
-  for (let i = 0; i < tx.length; i++) {
-    const [nx, ny] = applyRot(rot, tx[i], ty[i]);
-    rx.push(nx);
-    ry.push(ny);
-  }
-  return [rx, ry];
-}
-
-function convertGlobalCoordinate(x, y, sweepVec, sweepStart) {
-  const th = Math.atan2(sweepVec[1], sweepVec[0]);
-  const rot = rotMat2d(-th);
-  const rx = [];
-  const ry = [];
-  for (let i = 0; i < x.length; i++) {
-    const [nx, ny] = applyRot(rot, x[i], y[i]);
-    rx.push(nx + sweepStart[0]);
-    ry.push(ny + sweepStart[1]);
-  }
-  return [rx, ry];
-}
-
-function setupGridMap(ox, oy, resolution, sweepDirection) {
-  const width = Math.ceil((Math.max(...ox) - Math.min(...ox)) / resolution) + 10;
-  const height = Math.ceil((Math.max(...oy) - Math.min(...oy)) / resolution) + 10;
-  const centerX = (Math.max(...ox) + Math.min(...ox)) / 2;
-  const centerY = (Math.max(...oy) + Math.min(...oy)) / 2;
-
-  const polygonMercator = {
-    type: "Polygon",
-    coordinates: [ox.map((v, i) => [v, oy[i]])],
   };
 
-  const gridMap = new GridMap(width, height, resolution, centerX, centerY, polygonMercator);
-
-  let xGoal, goalY;
-  if (sweepDirection === SweepDirection.UP) {
-    [xGoal, goalY] = searchFreeGridIndexAtEdgeY(gridMap, true);
-  } else {
-    [xGoal, goalY] = searchFreeGridIndexAtEdgeY(gridMap, false);
-  }
-
-  return { gridMap, xGoal, goalY };
+  EllipseState.clickHandler = clickHandler;
+  MapObj.on("click", clickHandler);
 }
 
-function sweepPathSearch(sweeper, gridMap) {
-  let [cx, cy] = sweeper.searchStartGrid(gridMap);
-  if (!gridMap.setValue(cx, cy, 0.5)) {
-    return [[], []];
+function coveragePlanningMeters(polygonFeature, spacingMeters, resolutionMeters) {
+  if (typeof turf === "undefined") return [];
+  const normalized = normalizeBoundaryFeature(polygonFeature, spacingMeters);
+  const model = buildCoverageModelFromFeature(normalized, spacingMeters);
+  if (!model) return [];
+  const levelMax = (model.maxLevel || 0) + 1;
+  let levelVal = levelMax;
+  if (Number.isFinite(resolutionMeters) && resolutionMeters <= 0) {
+    levelVal = 1;
+  } else if (Number.isFinite(resolutionMeters) && resolutionMeters > 0) {
+    // Map desired spacing to nearest dyadic level (coarser spacing -> lower level)
+    const desiredSpacing = resolutionMeters;
+    const kApprox = desiredSpacing / Math.max(model.baseStepVal, 1e-6);
+    const kExp = Math.round(Math.log2(Math.max(kApprox, 1)));
+    const kVal = Math.pow(2, kExp);
+    const levelFromK = model.maxLevel - Math.round(Math.log2(Math.max(kVal, 1))) + 1;
+    levelVal = clamp(levelFromK, 1, levelMax);
   }
-
-  let [x, y] = gridMap.indexToWorld(cx, cy);
-  const px = [x];
-  const py = [y];
-
-  while (true) {
-    [cx, cy] = sweeper.moveTargetGrid(cx, cy, gridMap);
-    if (sweeper.isSearchDone(gridMap) || cx === null || cy === null) break;
-    [x, y] = gridMap.indexToWorld(cx, cy);
-    px.push(x);
-    py.push(y);
-    gridMap.setValue(cx, cy, 0.5);
-  }
-
-  return [px, py];
-}
-
-class SweepSearcher {
-  constructor(movingDirection, sweepDirection, xGoal, goalY) {
-    this.movingDirection = movingDirection;
-    this.sweepDirection = sweepDirection;
-    this.updateTurningWindow();
-    this.xGoal = xGoal;
-    this.goalY = goalY;
-  }
-
-  updateTurningWindow() {
-    this.turningWindow = [
-      [this.movingDirection, 0],
-      [this.movingDirection, this.sweepDirection],
-      [0, this.sweepDirection],
-      [-this.movingDirection, this.sweepDirection],
-    ];
-  }
-
-  swapMovingDirection() {
-    this.movingDirection *= -1;
-    this.updateTurningWindow();
-  }
-
-  checkOccupied(ix, iy, gridMap, occupiedVal = 0.5) {
-    return gridMap.checkOccupied(ix, iy, occupiedVal);
-  }
-
-  findSafeTurningGrid(cx, cy, gridMap) {
-    for (const [dx, dy] of this.turningWindow) {
-      const nx = dx + cx;
-      const ny = dy + cy;
-      if (!this.checkOccupied(nx, ny, gridMap)) return [nx, ny];
-    }
-    return [null, null];
-  }
-
-  isSearchDone(gridMap) {
-    for (const ix of this.xGoal) {
-      if (!this.checkOccupied(ix, this.goalY, gridMap)) return false;
-    }
-    return true;
-  }
-
-  searchStartGrid(gridMap) {
-    const [xInds, yInd] = searchFreeGridIndexAtEdgeY(
-      gridMap,
-      this.sweepDirection === SweepDirection.DOWN
-    );
-    if (this.movingDirection === MovingDirection.RIGHT) {
-      return [Math.min(...xInds), yInd];
-    }
-    return [Math.max(...xInds), yInd];
-  }
-
-  moveTargetGrid(cx, cy, gridMap) {
-    let nx = this.movingDirection + cx;
-    let ny = cy;
-    if (!this.checkOccupied(nx, ny, gridMap)) {
-      return [nx, ny];
-    }
-    // need to turn
-    let [tx, ty] = this.findSafeTurningGrid(cx, cy, gridMap);
-    if (tx === null && ty === null) {
-      nx = -this.movingDirection + cx;
-      ny = cy;
-      if (this.checkOccupied(nx, ny, gridMap, 1.0)) {
-        return [null, null];
-      }
-      return [nx, ny];
-    }
-    while (!this.checkOccupied(tx + this.movingDirection, ty, gridMap)) {
-      tx += this.movingDirection;
-    }
-    this.swapMovingDirection();
-    return [tx, ty];
-  }
-}
-
-function coveragePlanningMeters(polygonFeature, resolutionMeters) {
-  if (!polygonFeature) return [];
-  const mercator = turf.toMercator(polygonFeature);
-  const coords =
-    mercator.geometry.type === "Polygon"
-      ? mercator.geometry.coordinates[0]
-      : mercator.geometry.coordinates[0][0];
-
-  if (
-    coords.length &&
-    (coords[0][0] !== coords[coords.length - 1][0] ||
-      coords[0][1] !== coords[coords.length - 1][1])
-  ) {
-    coords.push([...coords[0]]);
-  }
-
-  const ox = coords.map((c) => c[0]);
-  const oy = coords.map((c) => c[1]);
-
-  const { vec: sweepVec, sweepStart } = findSweepDirectionAndStartPosition(ox, oy);
-  const [rox, roy] = convertGridCoordinate(ox, oy, sweepVec, sweepStart);
-  const { gridMap, xGoal, goalY } = setupGridMap(
-    rox,
-    roy,
-    resolutionMeters,
-    SweepDirection.UP
-  );
-  const sweeper = new SweepSearcher(MovingDirection.RIGHT, SweepDirection.UP, xGoal, goalY);
-  const [px, py] = sweepPathSearch(sweeper, gridMap);
-  const [rx, ry] = convertGlobalCoordinate(px, py, sweepVec, sweepStart);
-
-  const latLngs = [];
-  for (let i = 0; i < rx.length; i++) {
-    const [lon, lat] = turf.toWgs84([rx[i], ry[i]]);
-    latLngs.push([lat, lon]);
-  }
-  return latLngs;
+  const Res = generatePhotoWaypointsForLevel(model, levelVal);
+  return Res ? Res.latLngs : [];
 }
 
 function normalizeBoundaryFeature(feature, spacingMeters) {
@@ -590,11 +512,206 @@ function normalizeBoundaryFeature(feature, spacingMeters) {
   return null;
 }
 
+function clamp(val, min, max) {
+  return Math.min(Math.max(val, min), max);
+}
+
+function ellipseCircumferenceWaypoints(feature, spacingMeters, rotationDeg) {
+  const spacing = Number.isFinite(spacingMeters) && spacingMeters > 0 ? spacingMeters : 20;
+  if (!feature) return [];
+
+  // Prefer sampling actual current boundary polygon to guarantee alignment
+  const polyFeature =
+    feature && feature.geometry && feature.geometry.type === "Polygon"
+      ? feature
+      : normalizeBoundaryFeature(feature, spacing);
+
+  if (polyFeature && polyFeature.geometry && polyFeature.geometry.type === "Polygon") {
+    const ring = (polyFeature.geometry.coordinates[0] || []).slice();
+    if (ring.length && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) {
+      ring.push([...ring[0]]);
+    }
+    const line = turf.lineString(ring);
+    const totalM = turf.length(line, { units: "kilometers" }) * 1000;
+    const step = Math.max(1, spacing);
+    const steps = Math.max(3, Math.ceil(totalM / step));
+    const out = [];
+    for (let i = 0; i < steps; i++) {
+      const distKm = (totalM * i) / steps / 1000;
+      const pt = turf.along(line, distKm, { units: "kilometers" });
+      if (pt && pt.geometry && pt.geometry.coordinates) {
+        out.push(pt.geometry.coordinates);
+      }
+    }
+    return out;
+  }
+
+  // Fallback: rebuild from ellipse params (live state)
+  let centerLL = null;
+  let rx = null;
+  let ry = null;
+  let rotDeg = Number.isFinite(rotationDeg) ? rotationDeg : 0;
+  if (EllipseState && EllipseState.center) {
+    centerLL = EllipseState.center;
+    rx = EllipseState.rx || spacing;
+    ry = EllipseState.ry || spacing;
+    rotDeg = EllipseState.rotationDeg || rotDeg;
+  } else {
+    return [];
+  }
+
+  const centerMerc = turf.toMercator([centerLL.lng, centerLL.lat]);
+  const approxCirc = 2 * Math.PI * Math.sqrt((rx * rx + ry * ry) / 2);
+  const steps = Math.max(12, Math.ceil(approxCirc / spacing));
+  const rotRad = (rotDeg * Math.PI) / 180;
+  const out = [];
+  for (let i = 0; i < steps; i++) {
+    const t = (2 * Math.PI * i) / steps;
+    const x = rx * Math.cos(t);
+    const y = ry * Math.sin(t);
+    const xr = x * Math.cos(rotRad) - y * Math.sin(rotRad);
+    const yr = x * Math.sin(rotRad) + y * Math.cos(rotRad);
+    const wgs = turf.toWgs84([centerMerc[0] + xr, centerMerc[1] + yr]);
+    out.push(wgs);
+  }
+  return out;
+}
+
+function buildCoverageModelFromFeature(boundaryFeature, spacingMeters) {
+  try {
+    const mercator = turf.toMercator(boundaryFeature);
+    const coords =
+      mercator.geometry.type === "Polygon"
+        ? mercator.geometry.coordinates[0]
+        : mercator.geometry.coordinates[0][0];
+
+    const [ox, oy] = closePolygon(
+      coords.map((c) => c[0]),
+      coords.map((c) => c[1])
+    );
+
+    const [rx, ry] = planning(
+      ox,
+      oy,
+      spacingMeters,
+      MovingDirection.RIGHT,
+      SweepDirection.UP
+    );
+
+    const resModel = buildResolutionModel(rx, ry);
+    return {
+      boundaryFeature,
+      spacingMeters,
+      rx,
+      ry,
+      baseStepVal: resModel.baseStepVal,
+      baseDistArr: resModel.baseDistArr,
+      turnDistArr: resModel.turnDistArr,
+      maxLevel: resModel.maxLevel,
+    };
+  } catch (Err) {
+    console.error("Failed to build coverage model", Err);
+    return null;
+  }
+}
+
+function generatePhotoWaypointsForLevel(model, levelVal) {
+  if (!model || !model.rx || !model.ry) return null;
+  const levelMin = 1;
+  const levelMax = (model.maxLevel || 0) + 1;
+  const level = clamp(levelVal || levelMax, levelMin, levelMax);
+
+  const Result = generatePhotoWaypointsByResolutionLevel(
+    model.rx,
+    model.ry,
+    level,
+    model.baseStepVal,
+    model.baseDistArr,
+    model.turnDistArr,
+    model.maxLevel
+  );
+
+  const latLngs = [];
+  for (let i = 0; i < Result.wx.length; i++) {
+    const [lon, lat] = turf.toWgs84([Result.wx[i], Result.wy[i]]);
+    latLngs.push([lat, lon]);
+  }
+
+  return {
+    latLngs,
+    levelUsed: Result.levelUsed,
+    photoSpacingUsed: Result.photoSpacingUsed,
+    count: Result.count,
+  };
+}
+
+function syncResolutionSlider(model, preferredLevel) {
+  if (!ShapeResolutionSlider) return 1;
+  const maxLevelUi = model ? Math.max(1, (model.maxLevel || 0) + 1) : 1;
+  const minLevelUi = 1;
+  const levelVal = clamp(preferredLevel || maxLevelUi, minLevelUi, maxLevelUi);
+  ShapeResolutionSlider.min = String(minLevelUi);
+  ShapeResolutionSlider.max = String(maxLevelUi);
+  ShapeResolutionSlider.step = "1";
+  ShapeResolutionSlider.value = String(levelVal);
+  UpdateResolutionDisplay(levelVal);
+  return levelVal;
+}
+
+function RegenerateWaypointsFromResolution() {
+  if (BoundaryConfirmed) return;
+  if (!LastCoverageModel || !LastBoundaryFeature) return;
+  const Level = GetResolutionLevel() || 1;
+  applyCoverageModelAtLevel(LastCoverageModel, LastBoundaryFeature, Level);
+}
+
+function applyCoverageModelAtLevel(model, boundaryFeature, levelVal) {
+  const Res = generatePhotoWaypointsForLevel(model, levelVal);
+  if (!Res || !Res.latLngs || !Res.latLngs.length) return;
+
+  RemoveWaypointsInsideBoundary(boundaryFeature);
+
+  SelectedIds.clear();
+  Res.latLngs.forEach((ll) => {
+    AddWaypoint(ll[0], ll[1], { selectionMode: "add", skipRender: true });
+  });
+
+  if (ShapeResolutionSlider) {
+    ShapeResolutionSlider.value = String(Res.levelUsed);
+  }
+  UpdateResolutionDisplay(Res.levelUsed);
+  RenderAll();
+}
+
 function GetSpacingMeters() {
   if (!ShapeSpacingInput) return null;
   const ValNum = parseFloat(ShapeSpacingInput.value);
   if (!Number.isFinite(ValNum) || ValNum <= 0) return null;
   return ValNum;
+}
+
+function GetResolutionLevel() {
+  if (!ShapeResolutionSlider) return null;
+  const ValNum = parseInt(ShapeResolutionSlider.value, 10);
+  if (!Number.isFinite(ValNum)) return null;
+  return ValNum;
+}
+
+function UpdateResolutionDisplay(LevelOverride) {
+  if (!ShapeResolutionSlider || !ShapeResolutionValue) return;
+  const Level = LevelOverride || GetResolutionLevel() || 1;
+
+  let SpacingInfo = "";
+  if (LastCoverageModel && LastCoverageModel.baseStepVal !== undefined) {
+    const maxLevel = (LastCoverageModel.maxLevel || 0) + 1;
+    const levelClamped = Math.min(Math.max(Level, 1), maxLevel);
+    const kExp = LastCoverageModel.maxLevel - (levelClamped - 1);
+    const kVal = Math.max(1, Math.pow(2, kExp));
+    const photoSpacing = LastCoverageModel.baseStepVal * kVal;
+    SpacingInfo = ` (~${photoSpacing.toFixed(2)} m)`;
+  }
+
+  ShapeResolutionValue.textContent = `Level ${Level}${SpacingInfo}`;
 }
 
 function PushUniqueCoord(List, CoordArr) {
@@ -639,11 +756,10 @@ function SampleLineFeature(LineFeature, SpacingMeters) {
   return Points;
 }
 
-function GenerateWaypointCoordsFromShape(Feature, SpacingMeters) {
+function GenerateWaypointCoordsFromShape(Feature, SpacingMeters, ResolutionMeters) {
   if (typeof turf === "undefined") return [];
-  const boundary = normalizeBoundaryFeature(Feature, SpacingMeters);
-  if (!boundary) return [];
-  const pathLatLngs = coveragePlanningMeters(boundary, SpacingMeters);
+  if (!Feature || !Feature.geometry) return [];
+  const pathLatLngs = coveragePlanningMeters(Feature, SpacingMeters, ResolutionMeters);
   // return as [lng, lat] pairs to match AddWaypoint call below
   return pathLatLngs.map((ll) => [ll[1], ll[0]]);
 }
@@ -731,33 +847,89 @@ function GenerateWaypointsFromDrawnShape() {
   const ShapeFeature = GetFirstDrawnFeature();
   if (!SpacingMeters || !ShapeFeature) return;
 
-  const Points = GenerateWaypointCoordsFromShape(ShapeFeature, SpacingMeters);
-  if (!Points.length) return;
+  const BoundaryFeature = normalizeBoundaryFeature(ShapeFeature, SpacingMeters);
+  if (!BoundaryFeature) return;
 
-  SelectedIds.clear();
-  Points.forEach((Coord) => {
-    AddWaypoint(Coord[1], Coord[0], { selectionMode: "add", skipRender: true });
-  });
+  // Ellipse circumference mode: drop waypoints along ellipse edge
+  if (EllipseMode === "circumference") {
+    const circSpacing = parseFloat(
+      EllipseResolutionInput ? EllipseResolutionInput.value : "0"
+    );
+    const rotDeg = parseFloat(EllipseRotationInput ? EllipseRotationInput.value : "0") || 0;
+    const pts = ellipseCircumferenceWaypoints(BoundaryFeature, circSpacing, rotDeg);
+    if (!pts.length) return;
+    RemoveWaypointsInsideBoundary(BoundaryFeature);
+    SelectedIds.clear();
+    pts.forEach((p) => {
+      const wp = AddWaypoint(p[1], p[0], { selectionMode: "add", skipRender: true });
+      wp.Speed = SettingsState.globalSpeed;
+      wp.UseGlobalSpeed = true;
+    });
+    RenderAll();
+    return;
+  }
 
-  RenderAll();
-  DrawnItems.clearLayers();
+  const Model = buildCoverageModelFromFeature(BoundaryFeature, SpacingMeters);
+  if (!Model) return;
+
+  LastCoverageModel = Model;
+  LastBoundaryFeature = BoundaryFeature;
+
+  const PreferredLevel = GetResolutionLevel() || 1;
+  const LevelToUse = syncResolutionSlider(Model, PreferredLevel);
+
+  applyCoverageModelAtLevel(Model, BoundaryFeature, LevelToUse);
   UpdateToolsUi();
+}
+
+function RemoveWaypointsInsideBoundary(BoundaryFeature) {
+  if (!BoundaryFeature) return;
+  const PolyFeature =
+    BoundaryFeature.type === "Feature"
+      ? BoundaryFeature
+      : { type: "Feature", geometry: BoundaryFeature, properties: {} };
+  // Slightly buffer to ensure boundary points are included in the removal set
+  const RemovalPoly = turf.buffer(PolyFeature, 0.00001, { units: "kilometers" });
+  const Remaining = [];
+  Waypoints.forEach((Wp) => {
+    const Inside = turf.booleanPointInPolygon(
+      turf.point([Wp.Lon, Wp.Lat]),
+      RemovalPoly,
+      { ignoreBoundary: false }
+    );
+    if (Inside) {
+      SelectedIds.delete(Wp.Id);
+      ExpandedIds.delete(Wp.Id);
+      const Marker = MarkerById.get(Wp.Id);
+      if (Marker) {
+        MapObj.removeLayer(Marker);
+        MarkerById.delete(Wp.Id);
+      }
+    } else {
+      Remaining.push(Wp);
+    }
+  });
+  Waypoints.length = 0;
+  Remaining.forEach((Wp) => Waypoints.push(Wp));
 }
 
 function UpdateToolsUi() {
   const HasShape = DrawnItems && DrawnItems.getLayers().length > 0;
   const SpacingValid = GetSpacingMeters() !== null;
+  const ResolutionValid = GetResolutionLevel() !== null;
   const HasRotationSelection = SelectedIds.size >= 2;
   const AngleValid =
     RotationInput && Number.isFinite(parseFloat(RotationInput.value));
   const IsDrawingLine = ActiveDrawMode === "polyline";
   const IsDrawingPoly = ActiveDrawMode === "polygon";
+  const BoundaryLocked = BoundaryConfirmed;
 
   if (GenerateFromShapeBtn) {
-    GenerateFromShapeBtn.disabled = !HasShape || !SpacingValid;
+    GenerateFromShapeBtn.disabled =
+      !HasShape || !SpacingValid || !ResolutionValid || BoundaryLocked;
   }
   if (ClearShapesBtn) {
-    ClearShapesBtn.disabled = !HasShape;
+    ClearShapesBtn.disabled = !HasShape || BoundaryLocked;
   }
   if (ApplyRotationBtn) {
     ApplyRotationBtn.disabled = !(HasRotationSelection && AngleValid);
@@ -767,6 +939,20 @@ function UpdateToolsUi() {
   }
   if (DrawPolygonBtn) {
     DrawPolygonBtn.classList.toggle("active", IsDrawingPoly);
+  }
+  if (DrawEllipseBtn) {
+    DrawEllipseBtn.classList.toggle("active", ActiveDrawMode === "ellipse");
+  }
+  if (ConfirmShapeBtn) {
+    ConfirmShapeBtn.disabled = !HasShape || BoundaryLocked;
+    ConfirmShapeBtn.classList.toggle("active", BoundaryConfirmed);
+  }
+  if (ShapeResolutionSlider) {
+    ShapeResolutionSlider.disabled = !HasShape || BoundaryLocked || !LastCoverageModel;
+  }
+  if (EllipseModeBoundaryBtn && EllipseModeCircBtn) {
+    EllipseModeBoundaryBtn.classList.toggle("active", EllipseMode === "boundary");
+    EllipseModeCircBtn.classList.toggle("active", EllipseMode === "circumference");
   }
 }
 
@@ -880,6 +1066,43 @@ function FieldLabel(Key) {
   return Key;
 }
 
+function formatDurationSeconds(sec) {
+  if (!Number.isFinite(sec) || sec <= 0) return "~0s";
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const seconds = Math.floor(sec % 60);
+  const parts = [];
+  if (hours > 0) parts.push(hours + "h");
+  if (minutes > 0) parts.push(minutes + "m");
+  if (hours === 0 && minutes === 0) parts.push(seconds + "s");
+  return "~" + parts.join(" ");
+}
+
+function computeTravelTimeSeconds() {
+  if (!turf || Waypoints.length < 2) return 0;
+  const totalM = computeTotalDistanceMeters();
+  if (!Number.isFinite(totalM) || totalM <= 0) return 0;
+
+  let speedMs = SettingsState.globalSpeed;
+  if (SettingsState.units === "imperial") {
+    speedMs = speedMs * 0.44704; // mph to m/s
+  }
+  if (!Number.isFinite(speedMs) || speedMs <= 0) return 0;
+
+  return totalM / speedMs;
+}
+
+function computeTotalDistanceMeters() {
+  if (!turf || Waypoints.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < Waypoints.length - 1; i++) {
+    const a = Waypoints[i];
+    const b = Waypoints[i + 1];
+    total += turf.distance([a.Lon, a.Lat], [b.Lon, b.Lat], { units: "kilometers" }) * 1000;
+  }
+  return total;
+}
+
 function RenderWaypointList() {
   if (!WaypointListDiv) return;
   WaypointListDiv.innerHTML = "";
@@ -890,6 +1113,21 @@ function RenderWaypointList() {
   }
   if (WaypointSidebar) {
     WaypointSidebar.classList.toggle("collapsed", !IsWaypointPanelOpen);
+  }
+  if (TravelTimeSummary) {
+    if (Waypoints.length > 1) {
+      const sec = computeTravelTimeSeconds();
+      const distM = computeTotalDistanceMeters();
+      const useImperial = SettingsState.units === "imperial";
+      const distVal = useImperial ? distM * 0.000621371 : distM / 1000;
+      const distUnit = useImperial ? "mi" : "km";
+      TravelTimeSummary.style.display = "block";
+      TravelTimeSummary.textContent =
+        "~" + distVal.toFixed(2) + " " + distUnit + " | " + formatDurationSeconds(sec);
+    } else {
+      TravelTimeSummary.style.display = "none";
+      TravelTimeSummary.textContent = "";
+    }
   }
 
   if (Waypoints.length === 0) {
@@ -1118,13 +1356,20 @@ MapObj.on(L.Draw.Event.CREATED, (Ev) => {
   DrawnItems.clearLayers();
   DrawnItems.addLayer(Ev.layer);
   StopActiveDrawing();
+  BoundaryConfirmed = false;
+  LastCoverageModel = null;
+  LastBoundaryFeature = null;
   UpdateToolsUi();
 });
 
 MapObj.on(L.Draw.Event.DELETED, () => {
+  LastCoverageModel = null;
+  LastBoundaryFeature = null;
   UpdateToolsUi();
 });
 MapObj.on(L.Draw.Event.EDITED, () => {
+  LastCoverageModel = null;
+  LastBoundaryFeature = null;
   UpdateToolsUi();
 });
 MapObj.on(L.Draw.Event.DRAWSTOP, () => {
@@ -1141,14 +1386,40 @@ if (GenerateFromShapeBtn) {
 
 if (ClearShapesBtn) {
   ClearShapesBtn.addEventListener("click", () => {
-    DrawnItems.clearLayers();
-    UpdateToolsUi();
+    const BoundaryFeature = LastBoundaryFeature || GetFirstDrawnFeature();
+    if (!BoundaryFeature) return;
+    RemoveWaypointsInsideBoundary(BoundaryFeature);
+    RenderAll();
   });
 }
 
 if (ShapeSpacingInput) {
   ShapeSpacingInput.addEventListener("change", () => {
     UpdateToolsUi();
+  });
+}
+
+if (ShapeResolutionSlider) {
+  ShapeResolutionSlider.addEventListener("input", () => {
+    UpdateResolutionDisplay();
+    RegenerateWaypointsFromResolution();
+    UpdateToolsUi();
+  });
+}
+
+if (EllipseResolutionInput) {
+  EllipseResolutionInput.addEventListener("change", () => {
+    if (EllipseMode === "circumference") {
+      GenerateWaypointsFromDrawnShape();
+    }
+  });
+}
+
+if (EllipseRotationInput) {
+  EllipseRotationInput.addEventListener("change", () => {
+    if (EllipseMode === "circumference") {
+      GenerateWaypointsFromDrawnShape();
+    }
   });
 }
 
@@ -1161,6 +1432,25 @@ if (DrawLineBtn) {
 if (DrawPolygonBtn) {
   DrawPolygonBtn.addEventListener("click", () => {
     StartDrawing("polygon");
+  });
+}
+
+if (DrawEllipseBtn) {
+  DrawEllipseBtn.addEventListener("click", () => {
+    StartDrawing("ellipse");
+  });
+}
+
+if (ConfirmShapeBtn) {
+  ConfirmShapeBtn.addEventListener("click", () => {
+    if (!HasBoundaryShape()) return;
+    BoundaryConfirmed = true;
+    DrawnItems.clearLayers(); // remove boundary overlay after confirming
+    clearEllipseHandles();
+    EllipseState = null;
+    LastCoverageModel = null;
+    LastBoundaryFeature = null;
+    UpdateToolsUi();
   });
 }
 
@@ -1178,9 +1468,9 @@ if (RotationInput) {
 // Click on map: clear search results and add a waypoint
 MapObj.on("click", (Ev) => {
   ClearResults();
-  if (ActiveDrawer) {
+  if (ActiveDrawer || ActiveDrawMode === "ellipse") {
     // If currently drawing, try to finish polygon; do not add waypoint
-    if (TryFinishPolygonOnFirstPoint(Ev)) {
+    if (ActiveDrawMode !== "ellipse" && TryFinishPolygonOnFirstPoint(Ev)) {
       return;
     }
     return;
@@ -1225,6 +1515,18 @@ if (ToggleToolsBtn) {
   ToggleToolsBtn.addEventListener("click", () => {
     ToolsPanelOpen = !ToolsPanelOpen;
     UpdateRightPanelUi();
+  });
+}
+
+// Ellipse mode toggle
+if (EllipseModeBoundaryBtn && EllipseModeCircBtn) {
+  EllipseModeBoundaryBtn.addEventListener("click", () => {
+    EllipseMode = "boundary";
+    UpdateToolsUi();
+  });
+  EllipseModeCircBtn.addEventListener("click", () => {
+    EllipseMode = "circumference";
+    UpdateToolsUi();
   });
 }
 
@@ -1277,4 +1579,7 @@ if (GlobalSpeedInput) {
 }
 
 // Initial render for empty state
+UpdateResolutionDisplay();
 RenderAll();
+
+
