@@ -101,7 +101,7 @@
             <div class="toolTitle">Shape tools</div>
             <div class="settingsRow inlineRow">
               <label class="settingsLabel" for="ShapeSpacingInput">Spacing (m)</label>
-              <input id="ShapeSpacingInput" type="number" min="1" step="1" value="30" />
+            <input id="ShapeSpacingInput" type="number" min="0.1" step="0.1" value="30" />
           </div>
           <div class="settingsRow">
             <label class="settingsLabel" for="ShapeResolutionSlider">Resolution (m)</label>
@@ -111,9 +111,9 @@
               min="0"
               max="200"
               step="1"
-              value="30"
+              value="1"
             />
-            <div class="resolutionValue" id="ShapeResolutionValue">30 m</div>
+            <div class="resolutionValue" id="ShapeResolutionValue">Level 1</div>
           </div>
           <div class="settingsRow buttonRow">
             <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
@@ -196,6 +196,13 @@
     <script src="js/ellipse.js"></script>
 
     <!-- Custom scripts -->
+    <script src="js/app-state.js"></script>
+    <script src="js/helpers.js"></script>
+    <script src="js/ellipse-tools.js"></script>
+    <script src="js/algorithms.js"></script>
+    <script src="js/waypoints.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/history.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

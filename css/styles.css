@@ -487,23 +487,55 @@ body {
   width: auto;
 }
 
-.wpMarkerCircle {
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  background: #0d6efd;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+.wpMarker {
+  --wp-marker-size: 34px;
+  --wp-marker-fill: #0d6efd;
+  --wp-marker-shadow: rgba(0, 0, 0, 0.35);
+  width: var(--wp-marker-size);
+  height: var(--wp-marker-size);
+  background: transparent;
+  border: none;
+  overflow: visible;
 }
 
-.wpMarkerCircle.selected {
-  background: #ffb347;
-  border-color: #fff2d5;
+.wpMarker.selected {
+  --wp-marker-fill: #ffb347;
+}
+
+.wpMarkerDrop {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform: rotate(var(--heading, 0deg));
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 3px 10px var(--wp-marker-shadow));
+}
+
+.wpMarkerSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.wpMarkerShape {
+  fill: var(--wp-marker-fill);
+  stroke: rgba(0, 0, 0, 0.8);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.wpMarkerLabel {
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(calc(-1 * var(--heading, 0deg)));
+  transform-origin: 50% 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
 }
 
 .topbar {
