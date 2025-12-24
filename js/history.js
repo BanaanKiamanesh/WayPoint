@@ -29,6 +29,8 @@ function SnapshotState() {
     leftPanelOpen: LeftPanelOpen,
     activeLeftPane: ActiveLeftPane,
     toolsPanelOpen: ToolsPanelOpen,
+    manipulatePanelOpen: ManipulatePanelOpen,
+    exportPanelOpen: ExportPanelOpen,
     isWaypointPanelOpen: IsWaypointPanelOpen,
     boundaryConfirmed: BoundaryConfirmed,
     ellipseMode: EllipseMode,
@@ -48,6 +50,7 @@ function SnapshotState() {
     ellipseResolutionValue: EllipseResolutionInput ? EllipseResolutionInput.value : null,
     ellipseRotationValue: EllipseRotationInput ? EllipseRotationInput.value : null,
     rotationValue: RotationInput ? RotationInput.value : null,
+    exportFormatValue: ExportFormatSelect ? ExportFormatSelect.value : null,
   };
 }
 
@@ -94,10 +97,15 @@ function ApplySnapshot(State) {
   if (RotationInput && State.rotationValue !== null) {
     RotationInput.value = State.rotationValue;
   }
+  if (ExportFormatSelect && State.exportFormatValue !== null) {
+    ExportFormatSelect.value = State.exportFormatValue;
+  }
 
   LeftPanelOpen = Boolean(State.leftPanelOpen);
   ActiveLeftPane = State.activeLeftPane || "waypoints";
   ToolsPanelOpen = Boolean(State.toolsPanelOpen);
+  ManipulatePanelOpen = Boolean(State.manipulatePanelOpen);
+  ExportPanelOpen = Boolean(State.exportPanelOpen);
   IsWaypointPanelOpen =
     State.isWaypointPanelOpen !== undefined ? State.isWaypointPanelOpen : true;
   BoundaryConfirmed = Boolean(State.boundaryConfirmed);

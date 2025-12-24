@@ -37,7 +37,12 @@
         <div id="WaypointSidebar" class="sidebarPanel">
           <div class="panelHeader" id="WaypointPanelHeader">
             <div class="panelTitle">Waypoints</div>
-            <div class="panelHint">Click on the map to add</div>
+            <div class="waypointHeaderActions">
+              <div class="panelHint">Click on the map to add</div>
+              <button id="ClearAllWaypointsBtn" type="button" class="panelActionBtn">
+                Clear all
+              </button>
+            </div>
           </div>
           <div id="TravelTimeSummary" class="travelSummary"></div>
           <div id="WaypointList" class="panelBody"></div>
@@ -82,8 +87,8 @@
     <div id="RightControls" class="rightControls collapsed">
       <div class="toolsPanel">
         <div class="panelHeader">
-          <div class="panelTitle">Tools</div>
-          <div class="panelHint">Shapes & rotation</div>
+          <div class="panelTitle">Draw</div>
+          <div class="panelHint">Drawing tools</div>
         </div>
         <div class="panelBody settingsBody">
         <div class="toolSection">
@@ -140,8 +145,14 @@
           <div class="settingsHint">Ellipse: click center then radius; drag handles to adjust.</div>
           </div>
 
-          <div class="settingsDivider"></div>
-
+        </div>
+      </div>
+      <div class="manipulatePanel">
+        <div class="panelHeader">
+          <div class="panelTitle">Manipulate</div>
+          <div class="panelHint">Transform</div>
+        </div>
+        <div class="panelBody settingsBody">
           <div class="toolSection">
             <div class="toolTitle">Rotate selection</div>
             <div class="settingsRow inlineRow">
@@ -160,11 +171,62 @@
             </div>
             <div class="settingsHint">Rotates all selected waypoints around their centroid.</div>
           </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Reverse points</div>
+            <div class="settingsRow buttonRow">
+              <button id="ReverseWaypointsBtn" type="button" class="toolButton">
+                Reverse points
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="exportPanel">
+        <div class="panelHeader">
+          <div class="panelTitle">Import/Export</div>
+          <div class="panelHint">Load or download</div>
+        </div>
+        <div class="panelBody settingsBody">
+          <div class="toolSection">
+            <div class="toolTitle">Export</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="ExportFormatSelect">Format</label>
+              <select id="ExportFormatSelect">
+                <option value="kml" selected>KML</option>
+                <option value="kmz">KMZ</option>
+              </select>
+            </div>
+            <div class="settingsRow buttonRow">
+              <button id="ExportNowBtn" type="button" class="toolButton">Download</button>
+            </div>
+          </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Import</div>
+            <div class="settingsRow buttonRow">
+              <button id="ImportFileBtn" type="button" class="toolButton secondary">
+                Import KML/KMZ
+              </button>
+              <input
+                id="ImportFileInput"
+                type="file"
+                accept=".kml,.kmz"
+                class="hiddenInput"
+              />
+            </div>
+          </div>
         </div>
       </div>
       <div class="rightButtons">
-        <button id="ToggleToolsBtn" type="button" class="dockButton" title="Tools">
-          Tools
+        <button id="ToggleToolsBtn" type="button" class="dockButton" title="Draw">
+          Draw
+        </button>
+        <button id="ToggleManipulateBtn" type="button" class="dockButton" title="Manipulate">
+          Manipulate
+        </button>
+        <button id="ExportDockBtn" type="button" class="dockButton" title="Import/Export">
+          Import/Export
         </button>
       </div>
     </div>
@@ -192,6 +254,7 @@
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="js/coverage.js"></script>
     <script src="js/ellipse.js"></script>
 
@@ -201,6 +264,7 @@
     <script src="js/ellipse-tools.js"></script>
     <script src="js/algorithms.js"></script>
     <script src="js/waypoints.js"></script>
+    <script src="js/export.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/history.js"></script>
     <script src="js/main.js"></script>

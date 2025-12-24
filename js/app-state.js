@@ -1,6 +1,7 @@
 // ----- Map setup -----
 const MapObj = L.map("map", {
   zoomControl: false, // We'll add it manually at bottom left
+  boxZoom: false, // Reserve shift-drag for waypoint selection
   preferCanvas: true,
 }).setView([0, 0], 2); // World map default
 
@@ -58,6 +59,7 @@ const SettingsPanelLeft = document.getElementById("SettingsPanelLeft");
 const WaypointListDiv = document.getElementById("WaypointList");
 const TravelTimeSummary = document.getElementById("TravelTimeSummary");
 const WaypointPanelHeader = document.getElementById("WaypointPanelHeader");
+const ClearAllWaypointsBtn = document.getElementById("ClearAllWaypointsBtn");
 const UnitRadios = document.querySelectorAll('input[name="Units"]');
 const GlobalAltInput = document.getElementById("GlobalAltInput");
 const GlobalSpeedInput = document.getElementById("GlobalSpeedInput");
@@ -68,12 +70,14 @@ const GenerateFromShapeBtn = document.getElementById("GenerateFromShapeBtn");
 const ClearShapesBtn = document.getElementById("ClearShapesBtn");
 const RotationInput = document.getElementById("RotationInput");
 const ApplyRotationBtn = document.getElementById("ApplyRotationBtn");
+const ReverseWaypointsBtn = document.getElementById("ReverseWaypointsBtn");
 const ConfirmShapeBtn = document.getElementById("ConfirmShapeBtn");
 const LeftControlsWrap = document.getElementById("LeftControls");
 const ToggleWaypointsBtn = document.getElementById("ToggleWaypointsBtn");
 const ToggleSettingsBtn = document.getElementById("ToggleSettingsBtn");
 const RightControlsWrap = document.getElementById("RightControls");
 const ToggleToolsBtn = document.getElementById("ToggleToolsBtn");
+const ToggleManipulateBtn = document.getElementById("ToggleManipulateBtn");
 const DrawLineBtn = document.getElementById("DrawLineBtn");
 const DrawPolygonBtn = document.getElementById("DrawPolygonBtn");
 const DrawEllipseBtn = document.getElementById("DrawEllipseBtn");
@@ -81,6 +85,11 @@ const EllipseModeBoundaryBtn = document.getElementById("EllipseModeBoundaryBtn")
 const EllipseModeCircBtn = document.getElementById("EllipseModeCircBtn");
 const EllipseResolutionInput = document.getElementById("EllipseResolutionInput");
 const EllipseRotationInput = document.getElementById("EllipseRotationInput");
+const ExportDockBtn = document.getElementById("ExportDockBtn");
+const ExportFormatSelect = document.getElementById("ExportFormatSelect");
+const ExportNowBtn = document.getElementById("ExportNowBtn");
+const ImportFileBtn = document.getElementById("ImportFileBtn");
+const ImportFileInput = document.getElementById("ImportFileInput");
 
 // ----- Waypoint state -----
 const Waypoints = [];
@@ -90,6 +99,8 @@ let IsWaypointPanelOpen = true;
 let LeftPanelOpen = false;
 let ActiveLeftPane = "waypoints";
 let ToolsPanelOpen = false;
+let ManipulatePanelOpen = false;
+let ExportPanelOpen = false;
 let NextWaypointId = 1;
 const MarkerById = new Map();
 let LastRotationSnapshot = null; // Reserved for future undo/redo of transforms

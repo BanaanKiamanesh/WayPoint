@@ -59,6 +59,10 @@ body {
   cursor: pointer;
   font-weight: 700;
   letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   transition: all 0.15s ease;
 }
 
@@ -96,7 +100,7 @@ body {
 
 .rightControls {
   --tools-panel-width: 230px;
-  --dock-width: 60px;
+  --dock-width: 92px;
   position: absolute;
   top: 12px;
   right: 12px;
@@ -118,30 +122,47 @@ body {
 
 .rightControls .dockButton {
   width: var(--dock-width);
+  height: 52px;
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
-.toolsPanel {
+#ExportDockBtn {
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.toolsPanel,
+.manipulatePanel,
+.exportPanel {
   position: absolute;
   top: 0;
   right: calc(var(--dock-width) + 8px);
   width: var(--tools-panel-width);
   max-width: 88vw;
-  pointer-events: auto;
   transition: transform 0.22s ease, opacity 0.18s ease;
   transform: translateX(105%);
-  opacity: 1;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.rightControls.expanded .toolsPanel {
+.rightControls.toolsOpen .toolsPanel {
   transform: translateX(0);
   pointer-events: auto;
   opacity: 1;
 }
 
-.rightControls.collapsed .toolsPanel {
-  transform: translateX(150%);
-  pointer-events: none;
-  opacity: 0;
+.rightControls.manipulateOpen .manipulatePanel {
+  transform: translateX(0);
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.rightControls.exportOpen .exportPanel {
+  transform: translateX(0);
+  pointer-events: auto;
+  opacity: 1;
 }
 
 .sidebar {
@@ -191,6 +212,36 @@ body {
 
 .panelHeader.collapsed .panelHint {
   display: none;
+}
+
+.panelHeader.collapsed .waypointHeaderActions {
+  display: none;
+}
+
+.waypointHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panelActionBtn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.panelActionBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.panelActionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .travelSummary {
@@ -253,6 +304,14 @@ body {
   flex-wrap: wrap;
 }
 
+.hiddenInput {
+  display: none;
+}
+
+.exportPanel .settingsRow.buttonRow {
+  justify-content: center;
+}
+
 .settingsRow label {
   display: flex;
   align-items: center;
@@ -273,8 +332,22 @@ body {
   width: 100%;
 }
 
+.settingsRow select {
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  width: 100%;
+  cursor: pointer;
+}
+
 .settingsRow.inlineRow input[type="number"] {
   max-width: 120px;
+}
+
+.settingsRow.inlineRow select {
+  max-width: 140px;
 }
 
 .settingsLabel {
@@ -499,7 +572,7 @@ body {
 }
 
 .wpMarker.selected {
-  --wp-marker-fill: #ffb347;
+  --wp-marker-fill: #00e676;
 }
 
 .wpMarkerDrop {
@@ -747,8 +820,12 @@ body {
     top: 8px;
     right: 8px;
     --tools-panel-width: 230px;
-    --dock-width: 56px;
+    --dock-width: 88px;
     width: calc(var(--tools-panel-width) + var(--dock-width) + 10px);
+  }
+
+  #ExportDockBtn {
+    font-size: 10px;
   }
 
   .topbar {

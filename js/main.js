@@ -62,24 +62,253 @@ SearchInput.addEventListener("keydown", (Ev) => {
 });
 
 document.addEventListener("keydown", (Ev) => {
-  const key = Ev.key;
+  const key = Ev.key || "";
+  const keyLower = (Ev.key || "").toLowerCase();
   const isMod = Ev.ctrlKey || Ev.metaKey;
-  if (!isMod) return;
+  const isUndo = isMod && keyLower === "z" && !Ev.shiftKey;
+  const isRedo = isMod && (keyLower === "y" || (keyLower === "z" && Ev.shiftKey));
+  const isCopy = (isMod && keyLower === "c") || (Ev.ctrlKey && keyLower === "insert");
+  const isPaste = (isMod && keyLower === "v") || (Ev.shiftKey && keyLower === "insert");
 
-  const isUndo = (key === "z" || key === "Z") && !Ev.shiftKey;
-  const isRedo =
-    key === "y" ||
-    key === "Y" ||
-    ((key === "z" || key === "Z") && Ev.shiftKey);
-
-  if (isUndo) {
+  if (isMod && isUndo) {
     Ev.preventDefault();
     UndoHistory();
-  } else if (isRedo) {
+    return;
+  }
+  if (isMod && isRedo) {
     Ev.preventDefault();
     RedoHistory();
+    return;
+  }
+  if (isCopy && !IsEditableTarget(Ev.target)) {
+    Ev.preventDefault();
+    CopySelectedWaypoints();
+    return;
+  }
+  if (isPaste && !IsEditableTarget(Ev.target)) {
+    Ev.preventDefault();
+    PasteCopiedWaypoints();
+    return;
+  }
+
+  const isDeleteKey = key === "Delete" || key === "Backspace" || key === "Del";
+  if (isDeleteKey && !IsEditableTarget(Ev.target) && SelectedIds.size) {
+    Ev.preventDefault();
+    DeleteSelectedWaypoints();
   }
 });
+
+function IsFileDrag(Ev) {
+  if (!Ev || !Ev.dataTransfer) return false;
+  const Items = Ev.dataTransfer.items;
+  if (Items && Items.length) {
+    for (let i = 0; i < Items.length; i++) {
+      if (Items[i].kind === "file") return true;
+    }
+  }
+  return Ev.dataTransfer.files && Ev.dataTransfer.files.length > 0;
+}
+
+document.addEventListener("dragover", (Ev) => {
+  if (!IsFileDrag(Ev)) return;
+  Ev.preventDefault();
+  if (Ev.dataTransfer) {
+    Ev.dataTransfer.dropEffect = "copy";
+  }
+});
+
+document.addEventListener("drop", async (Ev) => {
+  if (!IsFileDrag(Ev)) return;
+  Ev.preventDefault();
+  const Files = Ev.dataTransfer && Ev.dataTransfer.files ? Ev.dataTransfer.files : null;
+  if (!Files || !Files.length) return;
+  try {
+    await ImportWaypointsFromFile(Files[0]);
+  } catch (Err) {
+    console.error("Import failed", Err);
+    alert("Import failed. Please check the file.");
+  }
+});
+
+let BoxSelectState = null;
+let BoxSelectLayer = null;
+let BoxSelectIgnoreClick = false;
+let MoveSelectionState = null;
+
+function IsEventOnWaypointMarker(OrigEv) {
+  if (!OrigEv || !OrigEv.target || !OrigEv.target.closest) return false;
+  return Boolean(OrigEv.target.closest(".wpMarker"));
+}
+
+function IsEditableTarget(TargetEl) {
+  if (!TargetEl) return false;
+  if (TargetEl.isContentEditable) return true;
+  const Tag = (TargetEl.tagName || "").toLowerCase();
+  return Tag === "input" || Tag === "textarea" || Tag === "select";
+}
+
+function IsPrimaryPointer(OrigEv) {
+  if (!OrigEv) return false;
+  if (OrigEv.button === undefined) return true;
+  return OrigEv.button === 0;
+}
+
+function StartBoxSelect(Ev) {
+  const OrigEv = Ev && Ev.originalEvent ? Ev.originalEvent : Ev;
+  if (!OrigEv || !OrigEv.shiftKey || !IsPrimaryPointer(OrigEv)) return;
+  if (ActiveDrawer || ActiveDrawMode === "ellipse") return;
+  if (IsEventOnWaypointMarker(OrigEv)) return;
+  if (MoveSelectionState) return;
+  if (BoxSelectState) return;
+
+  const StartLatLng = Ev && Ev.latlng ? Ev.latlng : MapObj.mouseEventToLatLng(OrigEv);
+  if (!StartLatLng) return;
+
+  L.DomEvent.preventDefault(OrigEv);
+  if (OrigEv.stopImmediatePropagation) {
+    OrigEv.stopImmediatePropagation();
+  } else {
+    L.DomEvent.stopPropagation(OrigEv);
+  }
+
+  BoxSelectState = {
+    startLatLng: StartLatLng,
+    additive: OrigEv.ctrlKey || OrigEv.metaKey,
+    moved: false,
+  };
+  BoxSelectIgnoreClick = true;
+
+  if (BoxSelectLayer) {
+    MapObj.removeLayer(BoxSelectLayer);
+    BoxSelectLayer = null;
+  }
+  BoxSelectLayer = L.rectangle([StartLatLng, StartLatLng], {
+    color: "#4db3ff",
+    weight: 1,
+    dashArray: "4 4",
+    fillOpacity: 0.08,
+    interactive: false,
+  });
+  BoxSelectLayer.addTo(MapObj);
+  MapObj.dragging.disable();
+  MapObj.on("mousemove", UpdateBoxSelect);
+  document.addEventListener("mouseup", EndBoxSelect);
+}
+
+function UpdateBoxSelect(Ev) {
+  if (!BoxSelectState || !BoxSelectLayer) return;
+  BoxSelectState.moved = true;
+  BoxSelectLayer.setBounds(L.latLngBounds(BoxSelectState.startLatLng, Ev.latlng));
+}
+
+function EndBoxSelect(Ev) {
+  if (!BoxSelectState) return;
+  MapObj.dragging.enable();
+  MapObj.off("mousemove", UpdateBoxSelect);
+  document.removeEventListener("mouseup", EndBoxSelect);
+
+  if (BoxSelectLayer) {
+    const Bounds = BoxSelectLayer.getBounds();
+    MapObj.removeLayer(BoxSelectLayer);
+    BoxSelectLayer = null;
+
+    if (BoxSelectState.moved) {
+      if (!BoxSelectState.additive) {
+        SelectedIds.clear();
+      }
+      Waypoints.forEach((Wp) => {
+        if (Bounds.contains([Wp.Lat, Wp.Lon])) {
+          SelectedIds.add(Wp.Id);
+        }
+      });
+      RenderAll();
+      PushHistory();
+    }
+  }
+
+  BoxSelectState = null;
+  setTimeout(() => {
+    BoxSelectIgnoreClick = false;
+  }, 0);
+}
+
+function StartMoveSelection(Ev) {
+  const OrigEv = Ev && Ev.originalEvent ? Ev.originalEvent : Ev;
+  if (!OrigEv || !OrigEv.altKey || !IsPrimaryPointer(OrigEv)) return;
+  if (OrigEv.shiftKey) return;
+  if (!SelectedIds || SelectedIds.size === 0) return;
+  if (ActiveDrawer || ActiveDrawMode === "ellipse") return;
+  if (BoxSelectState || MoveSelectionState) return;
+
+  const StartLatLng = Ev && Ev.latlng ? Ev.latlng : MapObj.mouseEventToLatLng(OrigEv);
+  if (!StartLatLng) return;
+
+  L.DomEvent.preventDefault(OrigEv);
+  if (OrigEv.stopImmediatePropagation) {
+    OrigEv.stopImmediatePropagation();
+  } else {
+    L.DomEvent.stopPropagation(OrigEv);
+  }
+
+  const Zoom = MapObj.getZoom();
+  const StartPoint = MapObj.project(StartLatLng, Zoom);
+  const Items = Waypoints.filter((Wp) => SelectedIds.has(Wp.Id)).map((Wp) => ({
+    id: Wp.Id,
+    wp: Wp,
+    point: MapObj.project([Wp.Lat, Wp.Lon], Zoom),
+  }));
+
+  if (!Items.length) return;
+
+  MoveSelectionState = {
+    zoom: Zoom,
+    startPoint: StartPoint,
+    items: Items,
+    moved: false,
+  };
+  BoxSelectIgnoreClick = true;
+
+  MapObj.dragging.disable();
+  MapObj.on("mousemove", UpdateMoveSelection);
+  document.addEventListener("mouseup", EndMoveSelection);
+}
+
+function UpdateMoveSelection(Ev) {
+  if (!MoveSelectionState) return;
+  MoveSelectionState.moved = true;
+  const CurPoint = MapObj.project(Ev.latlng, MoveSelectionState.zoom);
+  const dx = CurPoint.x - MoveSelectionState.startPoint.x;
+  const dy = CurPoint.y - MoveSelectionState.startPoint.y;
+
+  MoveSelectionState.items.forEach((Item) => {
+    const newPt = L.point(Item.point.x + dx, Item.point.y + dy);
+    const newLatLng = MapObj.unproject(newPt, MoveSelectionState.zoom);
+    Item.wp.Lat = newLatLng.lat;
+    Item.wp.Lon = newLatLng.lng;
+    const MarkerRef = MarkerById.get(Item.id);
+    if (MarkerRef) {
+      MarkerRef.setLatLng(newLatLng);
+    }
+  });
+
+  UpdatePolyline();
+  RenderWaypointList();
+}
+
+function EndMoveSelection() {
+  if (!MoveSelectionState) return;
+  MapObj.dragging.enable();
+  MapObj.off("mousemove", UpdateMoveSelection);
+  document.removeEventListener("mouseup", EndMoveSelection);
+
+  if (MoveSelectionState.moved) {
+    PushHistory();
+  }
+  MoveSelectionState = null;
+  setTimeout(() => {
+    BoxSelectIgnoreClick = false;
+  }, 0);
+}
 
 // Drawing events: keep only one active shape and enable tools
 MapObj.on(L.Draw.Event.CREATED, (Ev) => {
@@ -109,6 +338,15 @@ MapObj.on(L.Draw.Event.DRAWSTOP, () => {
   StopActiveDrawing();
   UpdateToolsUi();
 });
+
+const MapContainer = MapObj.getContainer();
+if (MapContainer) {
+  MapContainer.addEventListener("mousedown", StartMoveSelection, true);
+  MapContainer.addEventListener("mousedown", StartBoxSelect, true);
+}
+
+MapObj.on("mousedown", StartMoveSelection);
+MapObj.on("mousedown", StartBoxSelect);
 
 // Shape tool buttons
 if (GenerateFromShapeBtn) {
@@ -157,6 +395,14 @@ if (EllipseResolutionInput) {
 
 if (EllipseRotationInput) {
   EllipseRotationInput.addEventListener("change", () => {
+    const RotVal = parseFloat(EllipseRotationInput.value);
+    if (EllipseState && EllipseState.center && Number.isFinite(RotVal)) {
+      const NormRot = ((RotVal % 360) + 360) % 360;
+      EllipseRotationInput.value = String(NormRot);
+      EllipseState.rotationDeg = NormRot;
+      updateEllipseLayer();
+      refreshHandles();
+    }
     if (EllipseMode === "circumference") {
       GenerateWaypointsFromDrawnShape();
       return;
@@ -203,6 +449,12 @@ if (ApplyRotationBtn) {
   });
 }
 
+if (ReverseWaypointsBtn) {
+  ReverseWaypointsBtn.addEventListener("click", () => {
+    ReverseWaypointOrder();
+  });
+}
+
 if (RotationInput) {
   RotationInput.addEventListener("input", UpdateToolsUi);
   RotationInput.addEventListener("change", () => {
@@ -211,14 +463,64 @@ if (RotationInput) {
   });
 }
 
+if (ExportFormatSelect) {
+  ExportFormatSelect.addEventListener("change", () => {
+    PushHistory();
+  });
+}
+
+if (ExportDockBtn) {
+  ExportDockBtn.addEventListener("click", () => {
+    if (ExportPanelOpen) {
+      ExportPanelOpen = false;
+    } else {
+      ExportPanelOpen = true;
+      ToolsPanelOpen = false;
+      ManipulatePanelOpen = false;
+    }
+    UpdateRightPanelUi();
+    PushHistory();
+  });
+}
+
+if (ExportNowBtn) {
+  ExportNowBtn.addEventListener("click", () => {
+    if (!Waypoints.length) return;
+    const format = ExportFormatSelect ? ExportFormatSelect.value : "kml";
+    ExportWaypoints(format);
+  });
+}
+
+if (ImportFileBtn && ImportFileInput) {
+  ImportFileBtn.addEventListener("click", () => {
+    ImportFileInput.click();
+  });
+  ImportFileInput.addEventListener("change", async (Ev) => {
+    const FileObj = Ev.target && Ev.target.files ? Ev.target.files[0] : null;
+    if (!FileObj) return;
+    try {
+      await ImportWaypointsFromFile(FileObj);
+    } catch (Err) {
+      console.error("Import failed", Err);
+      alert("Import failed. Please check the file.");
+    } finally {
+      ImportFileInput.value = "";
+    }
+  });
+}
+
 // Click on map: clear search results and add a waypoint
 MapObj.on("click", (Ev) => {
   ClearResults();
+  if (BoxSelectIgnoreClick) return;
   if (ActiveDrawer || ActiveDrawMode === "ellipse") {
     // If currently drawing, try to finish polygon; do not add waypoint
     if (ActiveDrawMode !== "ellipse" && TryFinishPolygonOnFirstPoint(Ev)) {
       return;
     }
+    return;
+  }
+  if (Ev.originalEvent && Ev.originalEvent.shiftKey) {
     return;
   }
   AddWaypoint(Ev.latlng.lat, Ev.latlng.lng);
@@ -231,6 +533,13 @@ if (WaypointPanelHeader) {
     IsWaypointPanelOpen = !IsWaypointPanelOpen;
     RenderWaypointList();
     PushHistory();
+  });
+}
+
+if (ClearAllWaypointsBtn) {
+  ClearAllWaypointsBtn.addEventListener("click", (Ev) => {
+    Ev.stopPropagation();
+    ClearAllWaypoints();
   });
 }
 
@@ -262,7 +571,27 @@ if (ToggleSettingsBtn) {
 
 if (ToggleToolsBtn) {
   ToggleToolsBtn.addEventListener("click", () => {
-    ToolsPanelOpen = !ToolsPanelOpen;
+    if (ToolsPanelOpen) {
+      ToolsPanelOpen = false;
+    } else {
+      ToolsPanelOpen = true;
+      ManipulatePanelOpen = false;
+      ExportPanelOpen = false;
+    }
+    UpdateRightPanelUi();
+    PushHistory();
+  });
+}
+
+if (ToggleManipulateBtn) {
+  ToggleManipulateBtn.addEventListener("click", () => {
+    if (ManipulatePanelOpen) {
+      ManipulatePanelOpen = false;
+    } else {
+      ManipulatePanelOpen = true;
+      ToolsPanelOpen = false;
+      ExportPanelOpen = false;
+    }
     UpdateRightPanelUi();
     PushHistory();
   });

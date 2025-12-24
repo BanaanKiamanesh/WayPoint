@@ -73,11 +73,21 @@ function StartDrawing(Mode) {
 
 function UpdateRightPanelUi() {
   if (RightControlsWrap) {
-    RightControlsWrap.classList.toggle("collapsed", !ToolsPanelOpen);
-    RightControlsWrap.classList.toggle("expanded", ToolsPanelOpen);
+    const anyOpen = ToolsPanelOpen || ManipulatePanelOpen || ExportPanelOpen;
+    RightControlsWrap.classList.toggle("collapsed", !anyOpen);
+    RightControlsWrap.classList.toggle("expanded", anyOpen);
+    RightControlsWrap.classList.toggle("toolsOpen", ToolsPanelOpen);
+    RightControlsWrap.classList.toggle("manipulateOpen", ManipulatePanelOpen);
+    RightControlsWrap.classList.toggle("exportOpen", ExportPanelOpen);
   }
   if (ToggleToolsBtn) {
     ToggleToolsBtn.classList.toggle("active", ToolsPanelOpen);
+  }
+  if (ToggleManipulateBtn) {
+    ToggleManipulateBtn.classList.toggle("active", ManipulatePanelOpen);
+  }
+  if (ExportDockBtn) {
+    ExportDockBtn.classList.toggle("active", ExportPanelOpen);
   }
 }
 
@@ -103,6 +113,7 @@ function RotateSelectedWaypoints(AngleDeg) {
   const SelectedList = Waypoints.filter((Wp) => SelectedIds.has(Wp.Id));
   const AngleNum = parseFloat(AngleDeg);
   if (!Number.isFinite(AngleNum) || SelectedList.length < 2) return;
+  const HeadingDelta = AngleNum;
 
   // Centroid anchor (average lat/lon)
   const AnchorLat =
@@ -135,8 +146,19 @@ function RotateSelectedWaypoints(AngleDeg) {
     );
     Wp.Lat = RotatedLatLng.lat;
     Wp.Lon = RotatedLatLng.lng;
+    const HeadingVal = parseFloat(Wp.Heading);
+    if (Number.isFinite(HeadingVal)) {
+      Wp.Heading = ((HeadingVal + HeadingDelta) % 360 + 360) % 360;
+    }
   });
 
+  RenderAll();
+  PushHistory();
+}
+
+function ReverseWaypointOrder() {
+  if (Waypoints.length < 2) return;
+  Waypoints.reverse();
   RenderAll();
   PushHistory();
 }
@@ -161,6 +183,25 @@ function GetEllipseSpacingMeters() {
   if (!EllipseResolutionInput) return null;
   const ValNum = parseFloat(EllipseResolutionInput.value);
   return ConvertDistanceToMeters(ValNum);
+}
+
+function GetEllipseCenterLatLng(BoundaryFeature) {
+  if (BoundaryFeature && typeof turf !== "undefined" && turf.centroid) {
+    const CenterFeature = turf.centroid(BoundaryFeature);
+    if (
+      CenterFeature &&
+      CenterFeature.geometry &&
+      CenterFeature.geometry.coordinates &&
+      CenterFeature.geometry.coordinates.length >= 2
+    ) {
+      const Coords = CenterFeature.geometry.coordinates;
+      return L.latLng(Coords[1], Coords[0]);
+    }
+  }
+  if (EllipseState && EllipseState.center) {
+    return EllipseState.center;
+  }
+  return null;
 }
 
 function GetResolutionLevel() {
@@ -268,6 +309,7 @@ function GenerateWaypointsFromDrawnShape() {
     const rotDeg = parseFloat(EllipseRotationInput ? EllipseRotationInput.value : "0") || 0;
     const pts = ellipseCircumferenceWaypoints(BoundaryFeature, circSpacing, rotDeg);
     if (!pts.length) return;
+    const ellipseCenter = GetEllipseCenterLatLng(BoundaryFeature);
     RemoveWaypointsInsideBoundary(BoundaryFeature);
     SelectedIds.clear();
     pts.forEach((p) => {
@@ -278,6 +320,9 @@ function GenerateWaypointsFromDrawnShape() {
       });
       wp.Speed = SettingsState.globalSpeed;
       wp.UseGlobalSpeed = true;
+      if (ellipseCenter) {
+        wp.Heading = bearingBetweenPoints({ lat: wp.Lat, lng: wp.Lon }, ellipseCenter);
+      }
     });
     RenderAll();
     PushHistory();
@@ -393,6 +438,12 @@ function UpdateToolsUi() {
   }
   if (ShapeResolutionSlider) {
     ShapeResolutionSlider.disabled = !HasShape || BoundaryLocked || !LastCoverageModel;
+  }
+  if (ExportNowBtn) {
+    ExportNowBtn.disabled = Waypoints.length === 0;
+  }
+  if (ReverseWaypointsBtn) {
+    ReverseWaypointsBtn.disabled = Waypoints.length < 2;
   }
   if (EllipseModeBoundaryBtn && EllipseModeCircBtn) {
     EllipseModeBoundaryBtn.classList.toggle("active", EllipseMode === "boundary");

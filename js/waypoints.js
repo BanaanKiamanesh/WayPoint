@@ -6,6 +6,64 @@ function SnapshotSelectedWaypoints() {
   }));
 }
 
+let DragSelectionState = null;
+const PASTE_OFFSET_METERS = 5;
+let CopiedWaypoints = null;
+let PasteOffsetIndex = 0;
+
+function offsetLatLngMeters(lat, lon, offsetMeters) {
+  if (typeof turf !== "undefined" && turf.toMercator && turf.toWgs84) {
+    const merc = turf.toMercator([lon, lat]);
+    const wgs = turf.toWgs84([merc[0] + offsetMeters, merc[1] + offsetMeters]);
+    return { lat: wgs[1], lon: wgs[0] };
+  }
+  const latRad = (lat * Math.PI) / 180;
+  const deltaLat = offsetMeters / 111320;
+  const cosLat = Math.cos(latRad);
+  const deltaLon = Math.abs(cosLat) > 1e-6 ? offsetMeters / (111320 * cosLat) : 0;
+  return { lat: lat + deltaLat, lon: lon + deltaLon };
+}
+
+function CopySelectedWaypoints() {
+  const SelectedList = Waypoints.filter((Wp) => SelectedIds.has(Wp.Id));
+  if (!SelectedList.length) return;
+  CopiedWaypoints = SelectedList.map((Wp) => ({
+    Lat: Wp.Lat,
+    Lon: Wp.Lon,
+    Alt: Wp.Alt,
+    Speed: Wp.Speed,
+    Heading: Wp.Heading,
+    Gimbal: Wp.Gimbal,
+    UseGlobalAlt: Boolean(Wp.UseGlobalAlt),
+    UseGlobalSpeed: Boolean(Wp.UseGlobalSpeed),
+  }));
+  PasteOffsetIndex = 0;
+}
+
+function PasteCopiedWaypoints() {
+  if (!CopiedWaypoints || !CopiedWaypoints.length) return;
+  const offsetMeters = PASTE_OFFSET_METERS * (PasteOffsetIndex + 1);
+  PasteOffsetIndex += 1;
+
+  SelectedIds.clear();
+  CopiedWaypoints.forEach((Item) => {
+    const shifted = offsetLatLngMeters(Item.Lat, Item.Lon, offsetMeters);
+    const wp = AddWaypoint(shifted.lat, shifted.lon, {
+      selectionMode: "add",
+      skipRender: true,
+      skipHistory: true,
+    });
+    wp.UseGlobalAlt = Item.UseGlobalAlt;
+    wp.UseGlobalSpeed = Item.UseGlobalSpeed;
+    wp.Alt = wp.UseGlobalAlt ? SettingsState.globalAlt : Item.Alt;
+    wp.Speed = wp.UseGlobalSpeed ? SettingsState.globalSpeed : Item.Speed;
+    wp.Heading = Item.Heading;
+    wp.Gimbal = Item.Gimbal;
+  });
+  RenderAll();
+  PushHistory();
+}
+
 function MarkerIcon(Label, IsSelected, HeadingDeg) {
   const HeadingNum = parseFloat(HeadingDeg);
   const Heading = Number.isFinite(HeadingNum) ? HeadingNum : 0;
@@ -98,25 +156,77 @@ function RefreshMarkers() {
         icon: Icon,
       });
 
-      Marker.on("click", () => {
-        SelectedIds.clear();
-        SelectedIds.add(Wp.Id);
-        if (ExpandedIds.has(Wp.Id)) {
-          ExpandedIds.delete(Wp.Id);
+      Marker.on("click", (Ev) => {
+        const OrigEv = Ev && Ev.originalEvent;
+        const IsMulti =
+          OrigEv && (OrigEv.shiftKey || OrigEv.ctrlKey || OrigEv.metaKey);
+        if (IsMulti) {
+          if (SelectedIds.has(Wp.Id)) {
+            SelectedIds.delete(Wp.Id);
+          } else {
+            SelectedIds.add(Wp.Id);
+          }
         } else {
-          ExpandedIds.add(Wp.Id);
+          SelectedIds.clear();
+          SelectedIds.add(Wp.Id);
+          if (ExpandedIds.has(Wp.Id)) {
+            ExpandedIds.delete(Wp.Id);
+          } else {
+            ExpandedIds.add(Wp.Id);
+          }
         }
         RenderAll();
         PushHistory();
       });
 
+      Marker.on("dragstart", (Ev) => {
+        if (SelectedIds.has(Wp.Id) && SelectedIds.size > 1) {
+          const zoom = MapObj.getZoom();
+          const startPoint = MapObj.project(Ev.latlng, zoom);
+          const items = Waypoints.filter((Item) => SelectedIds.has(Item.Id)).map(
+            (Item) => ({
+              id: Item.Id,
+              wp: Item,
+              point: MapObj.project([Item.Lat, Item.Lon], zoom),
+            })
+          );
+          DragSelectionState = {
+            zoom,
+            startPoint,
+            items,
+            activeId: Wp.Id,
+          };
+        } else {
+          DragSelectionState = null;
+        }
+      });
+
       Marker.on("drag", (Ev) => {
-        Wp.Lat = Ev.latlng.lat;
-        Wp.Lon = Ev.latlng.lng;
+        if (DragSelectionState) {
+          const curPoint = MapObj.project(Ev.latlng, DragSelectionState.zoom);
+          const dx = curPoint.x - DragSelectionState.startPoint.x;
+          const dy = curPoint.y - DragSelectionState.startPoint.y;
+          DragSelectionState.items.forEach((Item) => {
+            const newPt = L.point(Item.point.x + dx, Item.point.y + dy);
+            const newLatLng = MapObj.unproject(newPt, DragSelectionState.zoom);
+            Item.wp.Lat = newLatLng.lat;
+            Item.wp.Lon = newLatLng.lng;
+            if (Item.id !== DragSelectionState.activeId) {
+              const MarkerRef = MarkerById.get(Item.id);
+              if (MarkerRef) {
+                MarkerRef.setLatLng(newLatLng);
+              }
+            }
+          });
+        } else {
+          Wp.Lat = Ev.latlng.lat;
+          Wp.Lon = Ev.latlng.lng;
+        }
         UpdatePolyline();
         RenderWaypointList();
       });
       Marker.on("dragend", () => {
+        DragSelectionState = null;
         PushHistory();
       });
 
@@ -187,9 +297,51 @@ function DeleteWaypoint(WpId) {
   PushHistory();
 }
 
+function DeleteSelectedWaypoints() {
+  if (!SelectedIds.size) return;
+  const Removed = new Set(SelectedIds);
+  if (!Removed.size) return;
+
+  const Remaining = [];
+  Waypoints.forEach((Wp) => {
+    if (Removed.has(Wp.Id)) {
+      ExpandedIds.delete(Wp.Id);
+      const Marker = MarkerById.get(Wp.Id);
+      if (Marker) {
+        MapObj.removeLayer(Marker);
+        MarkerById.delete(Wp.Id);
+      }
+    } else {
+      Remaining.push(Wp);
+    }
+  });
+
+  Waypoints.length = 0;
+  Remaining.forEach((Wp) => Waypoints.push(Wp));
+  SelectedIds.clear();
+  RenderAll();
+  PushHistory();
+}
+
+function ClearAllWaypoints() {
+  if (!Waypoints.length) return;
+  Waypoints.length = 0;
+  SelectedIds.clear();
+  ExpandedIds.clear();
+  for (const [, Marker] of MarkerById.entries()) {
+    MapObj.removeLayer(Marker);
+  }
+  MarkerById.clear();
+  RenderAll();
+  PushHistory();
+}
+
 function RenderWaypointList() {
   if (!WaypointListDiv) return;
   WaypointListDiv.innerHTML = "";
+  if (ClearAllWaypointsBtn) {
+    ClearAllWaypointsBtn.disabled = Waypoints.length === 0;
+  }
 
   WaypointListDiv.style.display = IsWaypointPanelOpen ? "block" : "none";
   if (WaypointPanelHeader) {
@@ -267,10 +419,19 @@ function RenderWaypointList() {
 
     HeaderMain.addEventListener("click", (Ev) => {
       Ev.stopPropagation();
-      const WasOpen = ExpandedIds.has(Wp.Id);
-      ExpandedIds[WasOpen ? "delete" : "add"](Wp.Id);
-      SelectedIds.clear();
-      SelectedIds.add(Wp.Id);
+      const IsMulti = Ev.shiftKey || Ev.ctrlKey || Ev.metaKey;
+      if (IsMulti) {
+        if (SelectedIds.has(Wp.Id)) {
+          SelectedIds.delete(Wp.Id);
+        } else {
+          SelectedIds.add(Wp.Id);
+        }
+      } else {
+        const WasOpen = ExpandedIds.has(Wp.Id);
+        ExpandedIds[WasOpen ? "delete" : "add"](Wp.Id);
+        SelectedIds.clear();
+        SelectedIds.add(Wp.Id);
+      }
       RenderAll();
       PushHistory();
     });
