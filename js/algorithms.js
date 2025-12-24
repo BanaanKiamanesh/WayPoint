@@ -1,23 +1,30 @@
 // Shape sampling + coverage planning utilities.
 
 // Create a coverage path for a polygon, with an optional target spacing in meters.
-function coveragePlanningMeters(polygonFeature, spacingMeters, resolutionMeters) {
+function coveragePlanningMeters(
+  polygonFeature,
+  spacingMeters,
+  resolutionMeters,
+  orientation
+) {
   if (typeof turf === "undefined") return [];
   const normalized = normalizeBoundaryFeature(polygonFeature, spacingMeters);
-  const model = buildCoverageModelFromFeature(normalized, spacingMeters);
+  const model = buildCoverageModelFromFeature(normalized, spacingMeters, orientation);
   if (!model) return [];
   const levelMax = (model.maxLevel || 0) + 1;
   let levelVal = levelMax;
-  if (Number.isFinite(resolutionMeters) && resolutionMeters <= 0) {
-    levelVal = 1;
-  } else if (Number.isFinite(resolutionMeters) && resolutionMeters > 0) {
-    // Convert target spacing to a nearest dyadic resolution level.
-    const desiredSpacing = resolutionMeters;
-    const kApprox = desiredSpacing / Math.max(model.baseStepVal, 1e-6);
-    const kExp = Math.round(Math.log2(Math.max(kApprox, 1)));
-    const kVal = Math.pow(2, kExp);
-    const levelFromK = model.maxLevel - Math.round(Math.log2(Math.max(kVal, 1))) + 1;
-    levelVal = clamp(levelFromK, 1, levelMax);
+  if (Number.isFinite(resolutionMeters)) {
+    if (resolutionMeters <= 0) {
+      levelVal = 1;
+    } else {
+      levelVal = resolutionLevelFromMeters(
+        resolutionMeters,
+        model.baseStepVal,
+        model.maxLevel || 0,
+        model.maxSpacing,
+        model.minSpacing
+      );
+    }
   }
   const Res = generatePhotoWaypointsForLevel(model, levelVal);
   return Res ? Res.latLngs : [];
@@ -94,7 +101,11 @@ function ellipseCircumferenceWaypoints(feature, spacingMeters, rotationDeg) {
 }
 
 // Build a coverage model in Mercator space for photo-style lawnmower paths.
-function buildCoverageModelFromFeature(boundaryFeature, spacingMeters) {
+function buildCoverageModelFromFeature(
+  boundaryFeature,
+  spacingMeters,
+  orientation
+) {
   try {
     const mercator = turf.toMercator(boundaryFeature);
     const coords =
@@ -112,19 +123,25 @@ function buildCoverageModelFromFeature(boundaryFeature, spacingMeters) {
       oy,
       spacingMeters,
       MovingDirection.RIGHT,
-      SweepDirection.UP
+      SweepDirection.UP,
+      orientation
     );
 
     const resModel = buildResolutionModel(rx, ry);
+    const modelRx = resModel.rx || rx;
+    const modelRy = resModel.ry || ry;
     return {
       boundaryFeature,
       spacingMeters,
-      rx,
-      ry,
+      rx: modelRx,
+      ry: modelRy,
+      orientation: orientation || "auto",
       baseStepVal: resModel.baseStepVal,
       baseDistArr: resModel.baseDistArr,
       turnDistArr: resModel.turnDistArr,
       maxLevel: resModel.maxLevel,
+      minSpacing: resModel.minSpacing,
+      maxSpacing: resModel.maxSpacing,
     };
   } catch (Err) {
     console.error("Failed to build coverage model", Err);
@@ -144,9 +161,10 @@ function generatePhotoWaypointsForLevel(model, levelVal) {
     model.ry,
     level,
     model.baseStepVal,
-    model.baseDistArr,
     model.turnDistArr,
-    model.maxLevel
+    model.maxLevel,
+    model.maxSpacing,
+    model.minSpacing
   );
 
   const latLngs = [];
@@ -208,14 +226,24 @@ function SampleLineFeature(LineFeature, SpacingMeters) {
 }
 
 // Generate waypoint coordinates from any drawn feature.
-function GenerateWaypointCoordsFromShape(Feature, SpacingMeters, ResolutionMeters) {
+function GenerateWaypointCoordsFromShape(
+  Feature,
+  SpacingMeters,
+  ResolutionMeters,
+  Orientation
+) {
   if (typeof turf === "undefined") return [];
   if (!Feature || !Feature.geometry) return [];
   const GeomType = Feature.geometry.type;
   if (GeomType === "LineString" || GeomType === "MultiLineString") {
     return SampleLineFeature(Feature, SpacingMeters);
   }
-  const pathLatLngs = coveragePlanningMeters(Feature, SpacingMeters, ResolutionMeters);
+  const pathLatLngs = coveragePlanningMeters(
+    Feature,
+    SpacingMeters,
+    ResolutionMeters,
+    Orientation
+  );
   // return as [lng, lat] pairs to match AddWaypoint usage in the UI layer
   return pathLatLngs.map((ll) => [ll[1], ll[0]]);
 }

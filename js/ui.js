@@ -227,12 +227,17 @@ function UpdateResolutionDisplay(LevelOverride) {
   const Level = LevelOverride || GetResolutionLevel() || 1;
 
   let SpacingInfo = "";
+  let LevelLabel = Level;
   if (LastCoverageModel && LastCoverageModel.baseStepVal !== undefined) {
-    const maxLevel = (LastCoverageModel.maxLevel || 0) + 1;
-    const levelClamped = Math.min(Math.max(Level, 1), maxLevel);
-    const kExp = LastCoverageModel.maxLevel - (levelClamped - 1);
-    const kVal = Math.max(1, Math.pow(2, kExp));
-    const photoSpacing = LastCoverageModel.baseStepVal * kVal;
+    const spacingInfo = resolutionSpacingFromLevel(
+      Level,
+      LastCoverageModel.baseStepVal,
+      LastCoverageModel.maxLevel || 0,
+      LastCoverageModel.maxSpacing,
+      LastCoverageModel.minSpacing
+    );
+    LevelLabel = spacingInfo.levelUsed;
+    const photoSpacing = spacingInfo.spacing;
     const displaySpacing = ConvertMetersToDistance(photoSpacing);
     const unitLabel = GetDistanceUnitLabel();
     if (Number.isFinite(displaySpacing)) {
@@ -240,7 +245,7 @@ function UpdateResolutionDisplay(LevelOverride) {
     }
   }
 
-  ShapeResolutionValue.textContent = `Level ${Level}${SpacingInfo}`;
+  ShapeResolutionValue.textContent = `Level ${LevelLabel}${SpacingInfo}`;
 }
 
 function syncResolutionSlider(model, preferredLevel) {
@@ -340,7 +345,15 @@ function GenerateWaypointsFromDrawnShape() {
     return;
   }
 
-  const Model = buildCoverageModelFromFeature(BoundaryFeature, SpacingMeters);
+  const useEllipseOrientation = EllipseMode === "boundary" && EllipseState;
+  const orientation = useEllipseOrientation
+    ? EllipseBoundaryOrientation
+    : PolygonOrientation;
+  const Model = buildCoverageModelFromFeature(
+    BoundaryFeature,
+    SpacingMeters,
+    orientation
+  );
   if (!Model) return;
 
   LastCoverageModel = Model;
@@ -425,6 +438,7 @@ function UpdateToolsUi() {
   const IsPolyTool = ActiveTool === "polygon";
   const IsEllipseTool = ActiveTool === "ellipse";
   const NeedsResolution = ActiveTool !== "polyline";
+  const ShowEllipseOrientation = IsEllipseTool && EllipseMode === "boundary";
   const BoundaryLocked = BoundaryConfirmed;
   const ShowDrawOptions = Boolean(ToolsPanelOpen && ActiveTool);
 
@@ -455,8 +469,14 @@ function UpdateToolsUi() {
   if (ShapeResolutionRow) {
     ShapeResolutionRow.style.display = IsLineTool ? "none" : "";
   }
+  if (ShapeOrientationRow) {
+    ShapeOrientationRow.style.display = IsPolyTool ? "" : "none";
+  }
   if (EllipseOptionsSection) {
     EllipseOptionsSection.style.display = IsEllipseTool ? "block" : "none";
+  }
+  if (EllipseOrientationRow) {
+    EllipseOrientationRow.style.display = ShowEllipseOrientation ? "" : "none";
   }
 
   if (GenerateFromShapeBtn) {
@@ -488,6 +508,15 @@ function UpdateToolsUi() {
   if (ShapeResolutionSlider) {
     ShapeResolutionSlider.disabled =
       !HasShape || BoundaryLocked || !LastCoverageModel || IsLineTool;
+  }
+  if (ShapeOrientationSelect) {
+    ShapeOrientationSelect.value = PolygonOrientation || "auto";
+    ShapeOrientationSelect.disabled = !HasShape || BoundaryLocked || !IsPolyTool;
+  }
+  if (EllipseOrientationSelect) {
+    EllipseOrientationSelect.value = EllipseBoundaryOrientation || "auto";
+    EllipseOrientationSelect.disabled =
+      !HasShape || BoundaryLocked || !ShowEllipseOrientation;
   }
   if (ExportNowBtn) {
     ExportNowBtn.disabled = Waypoints.length === 0;

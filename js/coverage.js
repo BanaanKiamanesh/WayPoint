@@ -109,6 +109,26 @@ function findSweepDirectionAndStartPosition(ox, oy) {
   return { vec, sweepStart };
 }
 
+function getBoundsCenter(ox, oy) {
+  if (!ox.length || !oy.length) return [0, 0];
+  const minX = Math.min(...ox);
+  const maxX = Math.max(...ox);
+  const minY = Math.min(...oy);
+  const maxY = Math.max(...oy);
+  return [(minX + maxX) / 2.0, (minY + maxY) / 2.0];
+}
+
+function getSweepVectorAndStart(ox, oy, orientation) {
+  const mode = String(orientation || "").toLowerCase();
+  if (mode === "east-west") {
+    return { vec: [1.0, 0.0], sweepStart: getBoundsCenter(ox, oy) };
+  }
+  if (mode === "north-south") {
+    return { vec: [0.0, 1.0], sweepStart: getBoundsCenter(ox, oy) };
+  }
+  return findSweepDirectionAndStartPosition(ox, oy);
+}
+
 function convertGridCoordinate(ox, oy, sweepVec, sweepStart) {
   const tx = ox.map((v) => v - sweepStart[0]);
   const ty = oy.map((v) => v - sweepStart[1]);
@@ -143,6 +163,27 @@ function closePolygon(ox, oy) {
     return [ox.slice(), oy.slice()];
   }
   return [ox.concat([ox[0]]), oy.concat([oy[0]])];
+}
+
+function sanitizePolyline(rx, ry, tol = 1e-6) {
+  if (!rx || !ry || rx.length !== ry.length) return [rx || [], ry || []];
+  const outX = [];
+  const outY = [];
+  for (let i = 0; i < rx.length; i++) {
+    const x = rx[i];
+    const y = ry[i];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (outX.length) {
+      const dx = x - outX[outX.length - 1];
+      const dy = y - outY[outY.length - 1];
+      if (Math.hypot(dx, dy) <= tol) {
+        continue;
+      }
+    }
+    outX.push(x);
+    outY.push(y);
+  }
+  return [outX, outY];
 }
 
 function horizontalLineIntersectionsX(ox, oy, y, eps) {
@@ -356,39 +397,53 @@ function sweepPathSearch(sweepSearcher, gridMap) {
   return [px, py];
 }
 
-function planning(ox, oy, spacingMeters, movingDirection, sweepDirection) {
-  const { vec: sweepVec, sweepStart } = findSweepDirectionAndStartPosition(ox, oy);
+function planning(
+  ox,
+  oy,
+  spacingMeters,
+  movingDirection,
+  sweepDirection,
+  orientation
+) {
+  const { vec: sweepVec, sweepStart } = getSweepVectorAndStart(
+    ox,
+    oy,
+    orientation
+  );
   const [rox, roy] = convertGridCoordinate(ox, oy, sweepVec, sweepStart);
   const { gridMap, xGoal, goalY } = setupGridMap(rox, roy, spacingMeters, sweepDirection);
   const sweeper = new SweepSearcher(movingDirection, sweepDirection, xGoal, goalY);
   let [px, py] = sweepPathSearch(sweeper, gridMap);
   [px, py] = snapTurningPointsToBorder(px, py, rox, roy, spacingMeters);
-  const [rx, ry] = convertGlobalCoordinate(px, py, sweepVec, sweepStart);
+  let [rx, ry] = convertGlobalCoordinate(px, py, sweepVec, sweepStart);
+  const tol = Number.isFinite(spacingMeters)
+    ? Math.max(1e-6, spacingMeters * 1e-6)
+    : 1e-6;
+  [rx, ry] = sanitizePolyline(rx, ry, tol);
   return [rx, ry];
 }
 
 function extractTurningIndices(rx, ry, angleTolDeg = 1.0) {
   const n = rx.length;
   if (n <= 2) return Array.from({ length: n }, (_, i) => i);
-  const dx = [];
-  const dy = [];
+  const dirs = [];
+  const segIdx = [];
+  const minSeg = 1e-6;
   for (let i = 0; i < n - 1; i++) {
-    dx.push(rx[i + 1] - rx[i]);
-    dy.push(ry[i + 1] - ry[i]);
+    const dx = rx[i + 1] - rx[i];
+    const dy = ry[i + 1] - ry[i];
+    const len = Math.hypot(dx, dy);
+    if (len <= minSeg) continue;
+    dirs.push([dx / len, dy / len]);
+    segIdx.push(i);
   }
-  const dirX = [];
-  const dirY = [];
-  for (let i = 0; i < dx.length; i++) {
-    const len = Math.hypot(dx[i], dy[i]) || 1;
-    dirX.push(dx[i] / len);
-    dirY.push(dy[i] / len);
-  }
+  if (!dirs.length) return [0, n - 1];
   const turnInds = [0];
   const cosTol = Math.cos((angleTolDeg * Math.PI) / 180.0);
-  for (let i = 0; i < dirX.length - 1; i++) {
-    const dot = dirX[i] * dirX[i + 1] + dirY[i] * dirY[i + 1];
+  for (let i = 0; i < dirs.length - 1; i++) {
+    const dot = dirs[i][0] * dirs[i + 1][0] + dirs[i][1] * dirs[i + 1][1];
     if (dot < cosTol) {
-      turnInds.push(i + 1);
+      turnInds.push(segIdx[i] + 1);
     }
   }
   turnInds.push(n - 1);
@@ -436,26 +491,82 @@ function samplePolylineAtDistances(rx, ry, distQueryArr) {
   return [outX, outY, totalLen, cumLen];
 }
 
-function mergeDistancesWithTurnPriority(distArr, isTurnArr, tolVal) {
-  if (!distArr.length) return [];
-  const out = [];
-  let i = 0;
-  const n = distArr.length;
-  while (i < n) {
-    let j = i;
-    while (j + 1 < n && distArr[j + 1] - distArr[i] <= tolVal) {
-      j++;
+function resolutionSpacingFromLevel(levelVal, baseStepVal, maxLevel, maxSpacing, minSpacing) {
+  const levelMin = 1;
+  const levelMax = Math.max(1, (maxLevel || 0) + 1);
+  const levelUsed = Math.min(
+    Math.max(Math.round(levelVal || levelMax), levelMin),
+    levelMax
+  );
+  const hasLinear =
+    Number.isFinite(maxSpacing) &&
+    Number.isFinite(minSpacing) &&
+    maxSpacing > 0 &&
+    minSpacing > 0 &&
+    maxSpacing >= minSpacing;
+  if (hasLinear) {
+    if (maxSpacing === minSpacing || (maxLevel || 0) <= 0) {
+      return { levelUsed, spacing: maxSpacing, kVal: null };
     }
-    let keepIdx = i;
-    for (let k = i; k <= j; k++) {
-      if (isTurnArr[k]) {
-        keepIdx = k;
-        break;
+    const span = maxSpacing - minSpacing;
+    const t = (levelUsed - 1) / (maxLevel || 1);
+    const spacing = maxSpacing - span * t;
+    return { levelUsed, spacing, kVal: null };
+  }
+
+  const kExp = (maxLevel || 0) - (levelUsed - 1);
+  const kVal = Math.max(1, Math.pow(2, kExp));
+  const spacing = Number.isFinite(baseStepVal) ? baseStepVal * kVal : NaN;
+  return { levelUsed, spacing, kVal };
+}
+
+// Midpoint refinement keeps existing points fixed while increasing density.
+function buildMidpointDistances(turnDistArr, spacingTarget, minSpacing) {
+  if (!turnDistArr || turnDistArr.length < 2) return [];
+  const spacing = Math.max(spacingTarget, 1e-6);
+  const minSpace =
+    Number.isFinite(minSpacing) && minSpacing > 0 ? minSpacing : spacing;
+  const tol = Math.max(1e-7, spacing * 1e-6);
+  const out = [];
+
+  for (let i = 0; i < turnDistArr.length - 1; i++) {
+    const start = turnDistArr[i];
+    const end = turnDistArr[i + 1];
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const segLen = end - start;
+    if (segLen <= tol) {
+      if (!out.length || Math.abs(end - out[out.length - 1]) > tol) {
+        out.push(end);
+      }
+      continue;
+    }
+
+    const ratio = segLen / spacing;
+    // Slight bias so early levels add midpoints sooner.
+    const ratioBoost = 1.3;
+    const boostedRatio = ratio * ratioBoost;
+    const desiredLevel = Math.max(
+      0,
+      Math.round(Math.log2(Math.max(boostedRatio, 1e-6)))
+    );
+    const minRatio = segLen / minSpace;
+    const maxRefineLevel = Math.max(
+      0,
+      Math.floor(Math.log2(Math.max(minRatio, 1e-6)))
+    );
+    const refineLevel = Math.min(desiredLevel, maxRefineLevel);
+    const subdiv = Math.pow(2, refineLevel);
+
+    for (let k = 0; k <= subdiv; k++) {
+      const dist = start + (segLen * k) / subdiv;
+      if (!out.length || Math.abs(dist - out[out.length - 1]) > tol) {
+        out.push(dist);
+      } else {
+        out[out.length - 1] = dist;
       }
     }
-    out.push(distArr[keepIdx]);
-    i = j + 1;
   }
+
   return out;
 }
 
@@ -468,11 +579,30 @@ function buildResolutionModel(
 ) {
   if (rx.length < 2 || ry.length < 2) {
     return {
+      rx,
+      ry,
       baseStepVal: 1,
       baseDistArr: [0],
       turnDistArr: [0],
       totalLen: 0,
       maxLevel: 0,
+      minSpacing: 1,
+      maxSpacing: 1,
+    };
+  }
+
+  [rx, ry] = sanitizePolyline(rx, ry);
+  if (rx.length < 2 || ry.length < 2) {
+    return {
+      rx,
+      ry,
+      baseStepVal: 1,
+      baseDistArr: [0],
+      turnDistArr: [0],
+      totalLen: 0,
+      maxLevel: 0,
+      minSpacing: 1,
+      maxSpacing: 1,
     };
   }
 
@@ -490,27 +620,17 @@ function buildResolutionModel(
   const totalLen = cumLen[cumLen.length - 1] || 0;
   if (totalLen <= 0 || !Number.isFinite(totalLen)) {
     return {
+      rx,
+      ry,
       baseStepVal: 1,
       baseDistArr: [0],
       turnDistArr: [0],
       totalLen: 0,
       maxLevel: 0,
+      minSpacing: 1,
+      maxSpacing: 1,
     };
   }
-
-  const desiredCount = Math.floor(totalLen / Math.max(minBaseStep, 1e-6)) + 1;
-  const candidateCount = Math.min(
-    Math.max(2, desiredCount),
-    Math.max(2, maxWaypoints)
-  );
-  const candidateMinusOne = Math.max(1, candidateCount - 1);
-  const maxLevel = Math.max(0, Math.floor(Math.log2(candidateMinusOne)));
-  const baseCount = Math.pow(2, maxLevel) + 1;
-  const baseDistArr = [];
-  for (let i = 0; i < baseCount; i++) {
-    baseDistArr.push((totalLen * i) / (baseCount - 1));
-  }
-  const baseStepVal = totalLen / (baseCount - 1);
 
   const turnInds = extractTurningIndices(rx, ry, turningAngleTolDeg);
   const turnDistArr = turnInds.map((idx) => cumLen[Math.min(idx, cumLen.length - 1)]);
@@ -518,7 +638,41 @@ function buildResolutionModel(
     (a, b) => a - b
   );
 
-  return { baseStepVal, baseDistArr, turnDistArr: turnSet, totalLen, maxLevel };
+  const segmentLens = [];
+  for (let i = 0; i < turnSet.length - 1; i++) {
+    const segLen = turnSet[i + 1] - turnSet[i];
+    if (Number.isFinite(segLen) && segLen > 0) {
+      segmentLens.push(segLen);
+    }
+  }
+
+  const maxPoints = Math.max(2, maxWaypoints);
+  const segmentCount = Math.max(1, segmentLens.length || turnSet.length - 1);
+  const minSpacingByCount = totalLen / Math.max(1, maxPoints - segmentCount);
+  const minSpacing = Math.max(minBaseStep, minSpacingByCount);
+  const maxSegLen = segmentLens.length ? Math.max(...segmentLens) : totalLen;
+  const maxSpacing = Math.max(maxSegLen, minSpacing);
+  const spacingRatio = maxSpacing / Math.max(minSpacing, 1e-6);
+  let maxLevel = 0;
+  if (spacingRatio > 1 + 1e-6) {
+    maxLevel = Math.round(Math.log2(spacingRatio) * 5);
+    maxLevel = Math.min(Math.max(maxLevel, 1), 60);
+  }
+
+  const baseStepVal = minSpacing;
+  const baseDistArr = [0];
+
+  return {
+    rx,
+    ry,
+    baseStepVal,
+    baseDistArr,
+    turnDistArr: turnSet,
+    totalLen,
+    maxLevel,
+    minSpacing,
+    maxSpacing,
+  };
 }
 
 function generatePhotoWaypointsByResolutionLevel(
@@ -526,59 +680,86 @@ function generatePhotoWaypointsByResolutionLevel(
   ry,
   resolutionLevelVal,
   baseStepVal,
-  baseDistArr,
   turnDistArr,
-  maxLevel
+  maxLevel,
+  maxSpacing,
+  minSpacing
 ) {
-  if (!baseDistArr.length) {
+  if (
+    !turnDistArr ||
+    !turnDistArr.length ||
+    !Number.isFinite(baseStepVal) ||
+    !rx ||
+    !ry ||
+    rx.length < 2 ||
+    ry.length < 2
+  ) {
     return { wx: [], wy: [], levelUsed: 1, photoSpacingUsed: baseStepVal, count: 0 };
   }
 
-  const levelMin = 1;
-  const levelMax = maxLevel + 1;
-  const levelVal = Math.min(
-    Math.max(Math.round(resolutionLevelVal), levelMin),
-    levelMax
+  const spacingInfo = resolutionSpacingFromLevel(
+    resolutionLevelVal,
+    baseStepVal,
+    maxLevel,
+    maxSpacing,
+    minSpacing
   );
-  const levelIdx = levelVal - 1;
-  const kExp = maxLevel - levelIdx;
-  const kVal = Math.max(1, Math.pow(2, kExp));
+  if (!Number.isFinite(spacingInfo.spacing)) {
+    return { wx: [], wy: [], levelUsed: spacingInfo.levelUsed, photoSpacingUsed: spacingInfo.spacing, count: 0 };
+  }
+  const distArr = buildMidpointDistances(
+    turnDistArr,
+    spacingInfo.spacing,
+    minSpacing
+  );
+  if (!distArr.length) {
+    return { wx: [], wy: [], levelUsed: spacingInfo.levelUsed, photoSpacingUsed: spacingInfo.spacing, count: 0 };
+  }
 
-  const selDistArr = baseDistArr.filter((_, idx) => idx % kVal === 0);
-  const selIsTurn = selDistArr.map(() => false);
-  const turnIsTurn = turnDistArr.map(() => true);
-
-  const allDist = selDistArr.concat(turnDistArr);
-  const allIsTurn = selIsTurn.concat(turnIsTurn);
-  const order = allDist
-    .map((d, i) => ({ d, i }))
-    .sort((a, b) => a.d - b.d)
-    .map((o) => o.i);
-  const sortedDist = order.map((idx) => allDist[idx]);
-  const sortedIsTurn = order.map((idx) => allIsTurn[idx]);
-
-  const tolVal = Math.max(1e-7, 0.25 * baseStepVal);
-  const mergedDist = mergeDistancesWithTurnPriority(sortedDist, sortedIsTurn, tolVal);
-
-  const [wx, wy] = samplePolylineAtDistances(rx, ry, mergedDist);
-  const photoSpacingUsed = baseStepVal * kVal;
+  const [wx, wy] = samplePolylineAtDistances(rx, ry, distArr);
   return {
     wx,
     wy,
-    levelUsed: levelVal,
-    photoSpacingUsed,
-    count: mergedDist.length,
+    levelUsed: spacingInfo.levelUsed,
+    photoSpacingUsed: spacingInfo.spacing,
+    count: distArr.length,
   };
 }
 
-function resolutionLevelFromMeters(resolutionMeters, baseStepVal, maxLevel) {
+function resolutionLevelFromMeters(
+  resolutionMeters,
+  baseStepVal,
+  maxLevel,
+  maxSpacing,
+  minSpacing
+) {
   if (!Number.isFinite(resolutionMeters) || resolutionMeters <= 0) {
+    return 1;
+  }
+  const maxLevelVal = Math.max(0, maxLevel || 0);
+  const levelMax = maxLevelVal + 1;
+  const hasLinear =
+    Number.isFinite(maxSpacing) &&
+    Number.isFinite(minSpacing) &&
+    maxSpacing > 0 &&
+    minSpacing > 0 &&
+    maxSpacing >= minSpacing;
+  if (hasLinear && maxSpacing !== minSpacing && maxLevelVal > 0) {
+    const spacing = Math.min(Math.max(resolutionMeters, minSpacing), maxSpacing);
+    const span = maxSpacing - minSpacing;
+    const t = (maxSpacing - spacing) / span;
+    const level = 1 + Math.round(t * maxLevelVal);
+    return Math.min(Math.max(level, 1), levelMax);
+  }
+  if (hasLinear && maxSpacing === minSpacing) {
+    return 1;
+  }
+  if (!Number.isFinite(baseStepVal) || baseStepVal <= 0) {
     return 1;
   }
   const desiredK = resolutionMeters / Math.max(baseStepVal, 1e-6);
   const kExp = Math.round(Math.log2(Math.max(desiredK, 1e-6)));
-  const maxK = Math.pow(2, maxLevel);
-  const kVal = Math.min(Math.max(1, Math.pow(2, kExp)), maxK);
-  const level = maxLevel - Math.round(Math.log2(kVal)) + 1;
-  return Math.min(Math.max(level, 1), maxLevel + 1);
+  const clampedExp = Math.min(Math.max(0, kExp), maxLevelVal);
+  const level = maxLevelVal - clampedExp + 1;
+  return Math.min(Math.max(level, 1), levelMax);
 }

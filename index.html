@@ -163,6 +163,14 @@
                 />
                 <div class="resolutionValue" id="ShapeResolutionValue">Level 1</div>
               </div>
+              <div id="ShapeOrientationRow" class="settingsRow inlineRow">
+                <label class="settingsLabel" for="ShapeOrientationSelect">Path orientation</label>
+                <select id="ShapeOrientationSelect">
+                  <option value="auto" selected>Auto</option>
+                  <option value="east-west">East-West</option>
+                  <option value="north-south">North-South</option>
+                </select>
+              </div>
               <div class="settingsRow buttonRow">
                 <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
                 <button id="ConfirmShapeBtn" type="button" class="toolButton secondary">Confirm</button>
@@ -175,17 +183,27 @@
             <div id="EllipseOptionsSection">
               <div class="settingsDivider"></div>
               <div class="toolSection">
-                <div class="toolTitle">Ellipse options</div>
-                <div class="settingsRow buttonRow">
-                  <button id="EllipseModeBoundaryBtn" type="button" class="toolButton">Border mode</button>
-                  <button id="EllipseModeCircBtn" type="button" class="toolButton secondary">
-                    Circumference
-                  </button>
-                </div>
-                <div class="settingsRow inlineRow">
-                  <label class="settingsLabel" for="EllipseResolutionInput">
-                    Circumf. spacing (m)
-                  </label>
+              <div class="toolTitle">Ellipse options</div>
+              <div class="settingsRow buttonRow">
+                <button id="EllipseModeBoundaryBtn" type="button" class="toolButton">Border mode</button>
+                <button id="EllipseModeCircBtn" type="button" class="toolButton secondary">
+                  Circumference
+                </button>
+              </div>
+              <div id="EllipseOrientationRow" class="settingsRow inlineRow">
+                <label class="settingsLabel" for="EllipseOrientationSelect">
+                  Path orientation
+                </label>
+                <select id="EllipseOrientationSelect">
+                  <option value="auto" selected>Auto</option>
+                  <option value="east-west">East-West</option>
+                  <option value="north-south">North-South</option>
+                </select>
+              </div>
+              <div class="settingsRow inlineRow">
+                <label class="settingsLabel" for="EllipseResolutionInput">
+                  Circumf. spacing (m)
+                </label>
                   <input id="EllipseResolutionInput" type="number" min="0" step="1" value="20" />
                 </div>
                 <div class="settingsRow inlineRow">

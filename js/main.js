@@ -456,12 +456,34 @@ if (ShapeResolutionSlider) {
   });
 }
 
+if (ShapeOrientationSelect) {
+  ShapeOrientationSelect.addEventListener("change", () => {
+    PolygonOrientation = ShapeOrientationSelect.value || "auto";
+    if (!BoundaryConfirmed && HasBoundaryShape()) {
+      GenerateWaypointsFromDrawnShape();
+    }
+    UpdateToolsUi();
+    PushHistory();
+  });
+}
+
 if (EllipseResolutionInput) {
   EllipseResolutionInput.addEventListener("change", () => {
     if (EllipseMode === "circumference") {
       GenerateWaypointsFromDrawnShape();
       return;
     }
+    PushHistory();
+  });
+}
+
+if (EllipseOrientationSelect) {
+  EllipseOrientationSelect.addEventListener("change", () => {
+    EllipseBoundaryOrientation = EllipseOrientationSelect.value || "auto";
+    if (EllipseMode === "boundary" && !BoundaryConfirmed && HasBoundaryShape()) {
+      GenerateWaypointsFromDrawnShape();
+    }
+    UpdateToolsUi();
     PushHistory();
   });
 }

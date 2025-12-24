@@ -196,6 +196,8 @@ const ShapeSpacingInput = document.getElementById("ShapeSpacingInput");
 const ShapeResolutionSlider = document.getElementById("ShapeResolutionSlider");
 const ShapeResolutionValue = document.getElementById("ShapeResolutionValue");
 const ShapeResolutionRow = document.getElementById("ShapeResolutionRow");
+const ShapeOrientationRow = document.getElementById("ShapeOrientationRow");
+const ShapeOrientationSelect = document.getElementById("ShapeOrientationSelect");
 const GenerateFromShapeBtn = document.getElementById("GenerateFromShapeBtn");
 const ClearShapesBtn = document.getElementById("ClearShapesBtn");
 const RotationInput = document.getElementById("RotationInput");
@@ -217,6 +219,8 @@ const DrawOptionsHint = document.getElementById("DrawOptionsHint");
 const EllipseOptionsSection = document.getElementById("EllipseOptionsSection");
 const EllipseModeBoundaryBtn = document.getElementById("EllipseModeBoundaryBtn");
 const EllipseModeCircBtn = document.getElementById("EllipseModeCircBtn");
+const EllipseOrientationRow = document.getElementById("EllipseOrientationRow");
+const EllipseOrientationSelect = document.getElementById("EllipseOrientationSelect");
 const EllipseResolutionInput = document.getElementById("EllipseResolutionInput");
 const EllipseRotationInput = document.getElementById("EllipseRotationInput");
 const ExportDockBtn = document.getElementById("ExportDockBtn");
@@ -243,6 +247,8 @@ let LastCoverageModel = null; // stores resolution model for current boundary/pa
 let LastBoundaryFeature = null; // normalized boundary in WGS84 for replacement/removal
 let EllipseState = null;
 let EllipseMode = "boundary"; // boundary | circumference
+let PolygonOrientation = "auto";
+let EllipseBoundaryOrientation = "auto";
 const WaypointLine = L.polyline([], {
   color: "#4db3ff",
   weight: 3,

@@ -48,6 +48,12 @@ function SnapshotState() {
           value: ShapeResolutionSlider.value,
         }
       : null,
+    shapeOrientationValue: ShapeOrientationSelect
+      ? ShapeOrientationSelect.value
+      : null,
+    ellipseOrientationValue: EllipseOrientationSelect
+      ? EllipseOrientationSelect.value
+      : null,
     ellipseResolutionValue: EllipseResolutionInput ? EllipseResolutionInput.value : null,
     ellipseRotationValue: EllipseRotationInput ? EllipseRotationInput.value : null,
     rotationValue: RotationInput ? RotationInput.value : null,
@@ -89,6 +95,12 @@ function ApplySnapshot(State) {
     ShapeResolutionSlider.step = State.shapeResolution.step;
     ShapeResolutionSlider.value = State.shapeResolution.value;
   }
+  if (ShapeOrientationSelect && State.shapeOrientationValue !== null) {
+    ShapeOrientationSelect.value = State.shapeOrientationValue;
+  }
+  if (EllipseOrientationSelect && State.ellipseOrientationValue !== null) {
+    EllipseOrientationSelect.value = State.ellipseOrientationValue;
+  }
   if (EllipseResolutionInput && State.ellipseResolutionValue !== null) {
     EllipseResolutionInput.value = State.ellipseResolutionValue;
   }
@@ -112,6 +124,12 @@ function ApplySnapshot(State) {
   ActiveDrawTool = State.activeDrawTool || null;
   BoundaryConfirmed = Boolean(State.boundaryConfirmed);
   EllipseMode = State.ellipseMode || "boundary";
+  PolygonOrientation =
+    State.shapeOrientationValue !== null ? State.shapeOrientationValue : "auto";
+  EllipseBoundaryOrientation =
+    State.ellipseOrientationValue !== null
+      ? State.ellipseOrientationValue
+      : "auto";
 
   Waypoints.length = 0;
   (State.waypoints || []).forEach((Wp) => Waypoints.push({ ...Wp }));
