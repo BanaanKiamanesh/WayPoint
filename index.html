@@ -23,14 +23,34 @@
 
   <body>
     <div id="map"></div>
+      <div id="DropOverlay" class="dropOverlay" aria-hidden="true">
+      <div class="dropOverlayBox">Drop waypoint .kml/.kmz/.csv file here</div>
+    </div>
 
     <div id="LeftControls" class="leftControls collapsed">
       <div class="leftButtons">
-        <button id="ToggleWaypointsBtn" type="button" class="dockButton" title="Waypoints">
-          Wpts
+        <button id="ToggleSettingsBtn" type="button" class="dockButton" title="Settings" aria-label="Settings">
+          <svg class="dockButtonIcon dockButtonIcon--settings" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M19.14 12.94c.04-.3.06-.62.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.14 7.14 0 0 0-1.64-.94l-.3-2.59a.5.5 0 0 0-.55-.5h-3.9a.5.5 0 0 0-.55.5l-.3 2.59a7.14 7.14 0 0 0-1.64.94l-2.39-.96a.5.5 0 0 0-.6.22L2.65 8.61a.5.5 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.38 1.04.7 1.64.94l.3 2.59a.5.5 0 0 0 .55.5h3.9a.5.5 0 0 0 .55-.5l.3-2.59c.6-.24 1.14-.56 1.64-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"
+              fill="currentColor"
+            />
+          </svg>
         </button>
-        <button id="ToggleSettingsBtn" type="button" class="dockButton" title="Settings">
-          Sets
+        <button id="ToggleWaypointsBtn" type="button" class="dockButton" title="Waypoints" aria-label="Waypoints">
+          <svg class="dockButtonIcon dockButtonIcon--waypoints" viewBox="0 0 24 24" width="34" height="34" aria-hidden="true" focusable="false">
+            <path
+              d="M6 5C16 2 18 9 11.5 11C6 13.5 7.5 19 18 19"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="6" cy="5" r="2.2" fill="#ff4d4d" />
+            <circle cx="11.5" cy="11" r="2.2" fill="#ff4d4d" />
+            <circle cx="18" cy="19" r="2.2" fill="#ff4d4d" />
+          </svg>
         </button>
       </div>
       <div class="leftPanel">
@@ -86,65 +106,98 @@
 
     <div id="RightControls" class="rightControls collapsed">
       <div class="toolsPanel">
-        <div class="panelHeader">
-          <div class="panelTitle">Draw</div>
-          <div class="panelHint">Drawing tools</div>
-        </div>
-        <div class="panelBody settingsBody">
-        <div class="toolSection">
-          <div class="toolTitle">Draw shape</div>
-          <div class="settingsRow buttonRow">
-            <button id="DrawLineBtn" type="button" class="toolButton">Line</button>
-            <button id="DrawPolygonBtn" type="button" class="toolButton">Polygon</button>
-            <button id="DrawEllipseBtn" type="button" class="toolButton">Ellipse</button>
-          </div>
-        </div>
-
-        <div class="settingsDivider"></div>
-
-          <div class="toolSection">
-            <div class="toolTitle">Shape tools</div>
-            <div class="settingsRow inlineRow">
-              <label class="settingsLabel" for="ShapeSpacingInput">Spacing (m)</label>
-            <input id="ShapeSpacingInput" type="number" min="0.1" step="0.1" value="30" />
-          </div>
-          <div class="settingsRow">
-            <label class="settingsLabel" for="ShapeResolutionSlider">Resolution (m)</label>
-            <input
-              id="ShapeResolutionSlider"
-              type="range"
-              min="0"
-              max="200"
-              step="1"
-              value="1"
-            />
-            <div class="resolutionValue" id="ShapeResolutionValue">Level 1</div>
-          </div>
-          <div class="settingsRow buttonRow">
-            <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
-            <button id="ConfirmShapeBtn" type="button" class="toolButton secondary">Confirm</button>
-            <button id="ClearShapesBtn" type="button" class="toolButton secondary">
-              Clear
+        <div class="drawToolStrip" aria-label="Draw shapes">
+          <div class="shapeSlider">
+            <button id="DrawLineBtn" type="button" class="shapeIconButton" aria-label="Line" title="Line">
+              <svg class="toolButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <line x1="4" y1="18" x2="20" y2="6" class="iconStroke" />
+                <circle cx="4" cy="18" r="2.2" class="iconDot" fill="#ff4d4d" />
+                <circle cx="20" cy="6" r="2.2" class="iconDot" fill="#ff4d4d" />
+              </svg>
+            </button>
+            <button id="DrawPolygonBtn" type="button" class="shapeIconButton" aria-label="Polygon" title="Polygon">
+              <svg class="toolButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <polygon points="12,3 20,9 17,20 7,20 4,9" class="iconStroke" />
+                <circle cx="12" cy="3" r="2.2" class="iconDot" fill="#ff4d4d" />
+                <circle cx="20" cy="9" r="2.2" class="iconDot" fill="#ff4d4d" />
+                <circle cx="17" cy="20" r="2.2" class="iconDot" fill="#ff4d4d" />
+                <circle cx="7" cy="20" r="2.2" class="iconDot" fill="#ff4d4d" />
+                <circle cx="4" cy="9" r="2.2" class="iconDot" fill="#ff4d4d" />
+              </svg>
+            </button>
+            <button id="DrawEllipseBtn" type="button" class="shapeIconButton" aria-label="Ellipse" title="Ellipse">
+              <svg
+                class="toolButtonIcon toolButtonIcon--ellipse"
+                viewBox="0 0 32 32"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <ellipse cx="16" cy="16" rx="8.5" ry="11" class="iconStroke" />
+                <circle cx="24.5" cy="16" r="2.4" class="iconDot" fill="#ff4d4d" />
+                <circle cx="16" cy="5" r="2.4" class="iconDot" fill="#ff4d4d" />
+              </svg>
             </button>
           </div>
+        </div>
 
-          <div class="settingsDivider"></div>
-          <div class="toolTitle">Ellipse options</div>
-          <div class="settingsRow buttonRow">
-            <button id="EllipseModeBoundaryBtn" type="button" class="toolButton">Border mode</button>
-            <button id="EllipseModeCircBtn" type="button" class="toolButton secondary">Circumference</button>
+        <div id="DrawOptionsPanel" class="drawOptionsPanel" aria-hidden="true">
+          <div class="panelHeader">
+            <div id="DrawOptionsTitle" class="panelTitle">Draw tools</div>
+            <div id="DrawOptionsHint" class="panelHint">Select a shape to begin</div>
           </div>
-          <div class="settingsRow inlineRow">
-            <label class="settingsLabel" for="EllipseResolutionInput">Circumf. spacing (m)</label>
-            <input id="EllipseResolutionInput" type="number" min="0" step="1" value="20" />
-          </div>
-          <div class="settingsRow inlineRow">
-            <label class="settingsLabel" for="EllipseRotationInput">Rotation (deg)</label>
-            <input id="EllipseRotationInput" type="number" step="1" value="0" />
-          </div>
-          <div class="settingsHint">Ellipse: click center then radius; drag handles to adjust.</div>
-          </div>
+          <div class="panelBody settingsBody">
+            <div class="toolSection">
+              <div class="settingsRow inlineRow">
+                <label class="settingsLabel" for="ShapeSpacingInput">Spacing (m)</label>
+                <input id="ShapeSpacingInput" type="number" min="0.1" step="0.1" value="30" />
+              </div>
+              <div id="ShapeResolutionRow" class="settingsRow">
+                <label class="settingsLabel" for="ShapeResolutionSlider">Resolution (m)</label>
+                <input
+                  id="ShapeResolutionSlider"
+                  type="range"
+                  min="0"
+                  max="200"
+                  step="1"
+                  value="1"
+                />
+                <div class="resolutionValue" id="ShapeResolutionValue">Level 1</div>
+              </div>
+              <div class="settingsRow buttonRow">
+                <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
+                <button id="ConfirmShapeBtn" type="button" class="toolButton secondary">Confirm</button>
+                <button id="ClearShapesBtn" type="button" class="toolButton secondary">
+                  Clear
+                </button>
+              </div>
+            </div>
 
+            <div id="EllipseOptionsSection">
+              <div class="settingsDivider"></div>
+              <div class="toolSection">
+                <div class="toolTitle">Ellipse options</div>
+                <div class="settingsRow buttonRow">
+                  <button id="EllipseModeBoundaryBtn" type="button" class="toolButton">Border mode</button>
+                  <button id="EllipseModeCircBtn" type="button" class="toolButton secondary">
+                    Circumference
+                  </button>
+                </div>
+                <div class="settingsRow inlineRow">
+                  <label class="settingsLabel" for="EllipseResolutionInput">
+                    Circumf. spacing (m)
+                  </label>
+                  <input id="EllipseResolutionInput" type="number" min="0" step="1" value="20" />
+                </div>
+                <div class="settingsRow inlineRow">
+                  <label class="settingsLabel" for="EllipseRotationInput">Rotation (deg)</label>
+                  <input id="EllipseRotationInput" type="number" step="1" value="0" />
+                </div>
+                <div class="settingsHint">
+                  Ellipse: click center then radius; drag handles to adjust.
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="manipulatePanel">
@@ -195,6 +248,7 @@
               <select id="ExportFormatSelect">
                 <option value="kml" selected>KML</option>
                 <option value="kmz">KMZ</option>
+                <option value="csv">CSV</option>
               </select>
             </div>
             <div class="settingsRow buttonRow">
@@ -206,12 +260,12 @@
             <div class="toolTitle">Import</div>
             <div class="settingsRow buttonRow">
               <button id="ImportFileBtn" type="button" class="toolButton secondary">
-                Import KML/KMZ
+                Import KML/KMZ/CSV
               </button>
               <input
                 id="ImportFileInput"
                 type="file"
-                accept=".kml,.kmz"
+                accept=".kml,.kmz,.csv"
                 class="hiddenInput"
               />
             </div>
@@ -219,14 +273,106 @@
         </div>
       </div>
       <div class="rightButtons">
-        <button id="ToggleToolsBtn" type="button" class="dockButton" title="Draw">
-          Draw
+        <button
+          id="ToggleToolsBtn"
+          type="button"
+          class="dockButton"
+          title="Draw"
+          aria-label="Draw"
+        >
+          <svg class="dockButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0L15.13 4.9l3.75 3.75 1.83-1.61z"
+              fill="currentColor"
+            />
+          </svg>
         </button>
-        <button id="ToggleManipulateBtn" type="button" class="dockButton" title="Manipulate">
-          Manipulate
+        <button
+          id="ToggleManipulateBtn"
+          type="button"
+          class="dockButton"
+          title="Manipulate"
+          aria-label="Manipulate"
+        >
+          <svg class="dockButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <line
+              x1="5"
+              y1="6"
+              x2="19"
+              y2="6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <circle cx="9" cy="6" r="2" fill="currentColor" />
+            <line
+              x1="5"
+              y1="12"
+              x2="19"
+              y2="12"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <circle cx="15" cy="12" r="2" fill="currentColor" />
+            <line
+              x1="5"
+              y1="18"
+              x2="19"
+              y2="18"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <circle cx="7" cy="18" r="2" fill="currentColor" />
+          </svg>
         </button>
-        <button id="ExportDockBtn" type="button" class="dockButton" title="Import/Export">
-          Import/Export
+        <button
+          id="ExportDockBtn"
+          type="button"
+          class="dockButton"
+          title="Import/Export"
+          aria-label="Import/Export"
+        >
+          <svg class="dockButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M0.4 5.2a3.4 3.4 0 0 1 3.4-3.4h8.4l3.2 3.2H20.2a3.4 3.4 0 0 1 3.4 3.4v10.6a3.4 3.4 0 0 1-3.4 3.4H3.8a3.4 3.4 0 0 1-3.4-3.4z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M9 8.5v8.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M7.4 15.8L9 17.4l1.6-1.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M15 17.4V8.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M13.4 10.1L15 8.5l1.6 1.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
         </button>
       </div>
     </div>

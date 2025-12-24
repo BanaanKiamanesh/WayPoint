@@ -17,7 +17,13 @@ function localMetersToLatLng(center, x, y) {
   return L.latLng(wgs[1], wgs[0]);
 }
 
-function computeEllipsePoints(center, rx, ry, rotationDeg, segments = 180) {
+function wrapLngNearCenter(lng, centerLng) {
+  const diff = lng - centerLng;
+  const wrapped = ((diff + 180) % 360 + 360) % 360 - 180;
+  return centerLng + wrapped;
+}
+
+function computeEllipsePoints(center, rx, ry, rotationDeg, segments = 720) {
   const pts = [];
   const rotRad = (rotationDeg * Math.PI) / 180;
   const centerMerc = turf.toMercator([center[1], center[0]]);
@@ -28,7 +34,8 @@ function computeEllipsePoints(center, rx, ry, rotationDeg, segments = 180) {
     const xr = x * Math.cos(rotRad) - y * Math.sin(rotRad);
     const yr = x * Math.sin(rotRad) + y * Math.cos(rotRad);
     const wgs = turf.toWgs84([centerMerc[0] + xr, centerMerc[1] + yr]);
-    pts.push([wgs[1], wgs[0]]);
+    const wrappedLng = wrapLngNearCenter(wgs[0], center[1]);
+    pts.push([wgs[1], wrappedLng]);
   }
   return pts;
 }

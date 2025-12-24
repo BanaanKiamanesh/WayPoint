@@ -87,21 +87,10 @@ function ellipseCircumferenceWaypoints(feature, spacingMeters, rotationDeg) {
     return [];
   }
 
-  const centerMerc = turf.toMercator([centerLL.lng, centerLL.lat]);
   const approxCirc = 2 * Math.PI * Math.sqrt((rx * rx + ry * ry) / 2);
   const steps = Math.max(12, Math.ceil(approxCirc / spacing));
-  const rotRad = (rotDeg * Math.PI) / 180;
-  const out = [];
-  for (let i = 0; i < steps; i++) {
-    const t = (2 * Math.PI * i) / steps;
-    const x = rx * Math.cos(t);
-    const y = ry * Math.sin(t);
-    const xr = x * Math.cos(rotRad) - y * Math.sin(rotRad);
-    const yr = x * Math.sin(rotRad) + y * Math.cos(rotRad);
-    const wgs = turf.toWgs84([centerMerc[0] + xr, centerMerc[1] + yr]);
-    out.push(wgs);
-  }
-  return out;
+  const pts = computeEllipsePoints([centerLL.lat, centerLL.lng], rx, ry, rotDeg, steps);
+  return pts.map((p) => [p[1], p[0]]);
 }
 
 // Build a coverage model in Mercator space for photo-style lawnmower paths.

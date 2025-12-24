@@ -97,14 +97,61 @@ function ConvertMetersToDistance(MetersVal) {
   return SettingsState.units === "imperial" ? MetersVal / METERS_PER_FOOT : MetersVal;
 }
 
+const MPH_PER_MS = 2.2369362920544;
+const MS_PER_MPH = 0.44704;
+
+function RoundNumber(ValueNum, decimals) {
+  if (!Number.isFinite(ValueNum)) return ValueNum;
+  const places = Number.isFinite(decimals) ? decimals : 0;
+  const factor = Math.pow(10, places);
+  return Math.round(ValueNum * factor) / factor;
+}
+
+function ConvertDistanceBetweenUnits(ValueNum, FromUnits, ToUnits) {
+  if (!Number.isFinite(ValueNum)) return ValueNum;
+  if (FromUnits === ToUnits) return ValueNum;
+  if (FromUnits === "metric" && ToUnits === "imperial") {
+    return ValueNum / METERS_PER_FOOT;
+  }
+  if (FromUnits === "imperial" && ToUnits === "metric") {
+    return ValueNum * METERS_PER_FOOT;
+  }
+  return ValueNum;
+}
+
+function ConvertSpeedBetweenUnits(ValueNum, FromUnits, ToUnits) {
+  if (!Number.isFinite(ValueNum)) return ValueNum;
+  if (FromUnits === ToUnits) return ValueNum;
+  if (FromUnits === "metric" && ToUnits === "imperial") {
+    return ValueNum * MPH_PER_MS;
+  }
+  if (FromUnits === "imperial" && ToUnits === "metric") {
+    return ValueNum * MS_PER_MPH;
+  }
+  return ValueNum;
+}
+
 function UpdateDistanceLabels() {
   const UnitLabel = GetDistanceUnitLabel();
   const SpacingLabel = document.querySelector('label[for="ShapeSpacingInput"]');
   if (SpacingLabel) {
     SpacingLabel.textContent = "Spacing (" + UnitLabel + ")";
   }
+  const ResolutionLabel = document.querySelector('label[for="ShapeResolutionSlider"]');
+  if (ResolutionLabel) {
+    ResolutionLabel.textContent = "Resolution (" + UnitLabel + ")";
+  }
   const EllipseLabel = document.querySelector('label[for="EllipseResolutionInput"]');
   if (EllipseLabel) {
     EllipseLabel.textContent = "Circumf. spacing (" + UnitLabel + ")";
+  }
+  const AltLabel = document.querySelector('label[for="GlobalAltInput"]');
+  if (AltLabel) {
+    AltLabel.textContent = "Global altitude (" + UnitLabel + ")";
+  }
+  const SpeedLabel = document.querySelector('label[for="GlobalSpeedInput"]');
+  if (SpeedLabel) {
+    const speedUnit = SettingsState.units === "imperial" ? "mph" : "m/s";
+    SpeedLabel.textContent = "Global speed (" + speedUnit + ")";
   }
 }

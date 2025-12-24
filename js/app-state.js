@@ -13,7 +13,118 @@ const OsmTiles = L.tileLayer(
     attribution: "&copy; OpenStreetMap contributors",
   }
 );
-OsmTiles.addTo(MapObj);
+const SatelliteTiles = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  {
+    maxZoom: 19,
+    attribution:
+      "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+  }
+);
+
+let ActiveBaseLayer = SatelliteTiles;
+ActiveBaseLayer.addTo(MapObj);
+
+let MapModeBtnMap = null;
+let MapModeBtnSat = null;
+
+function setBaseLayer(mode) {
+  const useSatellite = mode === "satellite";
+  const nextLayer = useSatellite ? SatelliteTiles : OsmTiles;
+  if (ActiveBaseLayer === nextLayer) return;
+  if (ActiveBaseLayer) {
+    MapObj.removeLayer(ActiveBaseLayer);
+  }
+  ActiveBaseLayer = nextLayer;
+  ActiveBaseLayer.addTo(MapObj);
+  if (MapModeBtnMap && MapModeBtnSat) {
+    MapModeBtnMap.classList.toggle("active", !useSatellite);
+    MapModeBtnSat.classList.toggle("active", useSatellite);
+    MapModeBtnMap.setAttribute("aria-pressed", useSatellite ? "false" : "true");
+    MapModeBtnSat.setAttribute("aria-pressed", useSatellite ? "true" : "false");
+  }
+}
+
+function FitMapToWindow() {
+  if (!MapObj) return;
+  let bounds = null;
+  if (Waypoints && Waypoints.length) {
+    bounds = L.latLngBounds(Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]));
+  }
+  if (
+    (!bounds || !bounds.isValid || !bounds.isValid()) &&
+    DrawnItems &&
+    DrawnItems.getLayers().length
+  ) {
+    bounds = DrawnItems.getBounds();
+  }
+  if ((!bounds || !bounds.isValid || !bounds.isValid()) && SearchMarker) {
+    const ll = SearchMarker.getLatLng();
+    bounds = L.latLngBounds([ll, ll]);
+  }
+  if (bounds && bounds.isValid && bounds.isValid()) {
+    MapObj.fitBounds(bounds.pad(0.15));
+  } else {
+    MapObj.fitWorld();
+  }
+  MapObj.invalidateSize();
+}
+
+const MapModeControl = L.control({ position: "bottomleft" });
+MapModeControl.onAdd = () => {
+  const Wrap = L.DomUtil.create("div", "mapModeControl");
+  const MapBtn = L.DomUtil.create("button", "mapModeButton active", Wrap);
+  MapBtn.type = "button";
+  MapBtn.textContent = "Map";
+  MapBtn.setAttribute("aria-pressed", "true");
+
+  const SatBtn = L.DomUtil.create("button", "mapModeButton", Wrap);
+  SatBtn.type = "button";
+  SatBtn.textContent = "Satellite";
+  SatBtn.setAttribute("aria-pressed", "false");
+
+  MapModeBtnMap = MapBtn;
+  MapModeBtnSat = SatBtn;
+
+  setBaseLayer("satellite");
+
+  L.DomEvent.on(MapBtn, "click", (Ev) => {
+    L.DomEvent.stop(Ev);
+    setBaseLayer("map");
+  });
+  L.DomEvent.on(SatBtn, "click", (Ev) => {
+    L.DomEvent.stop(Ev);
+    setBaseLayer("satellite");
+  });
+
+  L.DomEvent.disableClickPropagation(Wrap);
+  L.DomEvent.disableScrollPropagation(Wrap);
+  return Wrap;
+};
+MapModeControl.addTo(MapObj);
+
+const HomeControl = L.control({ position: "bottomleft" });
+HomeControl.onAdd = () => {
+  const Wrap = L.DomUtil.create("div", "homeControl");
+  const Btn = L.DomUtil.create("button", "homeButton", Wrap);
+  Btn.type = "button";
+  Btn.title = "Fit map";
+  Btn.setAttribute("aria-label", "Fit map");
+  Btn.innerHTML =
+    '<svg class="homeButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 4.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 0 1 0-5z" />' +
+    "</svg>";
+
+  L.DomEvent.on(Btn, "click", (Ev) => {
+    L.DomEvent.stop(Ev);
+    FitMapToWindow();
+  });
+
+  L.DomEvent.disableClickPropagation(Wrap);
+  L.DomEvent.disableScrollPropagation(Wrap);
+  return Wrap;
+};
+HomeControl.addTo(MapObj);
 
 // Add zoom control at bottom left
 L.control
@@ -26,12 +137,27 @@ L.control
 const DrawnItems = L.featureGroup();
 DrawnItems.addTo(MapObj);
 
+const DrawVertexIcon = L.divIcon({
+  className: "drawVertexIcon",
+  html: '<div class="drawVertexDot"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+const DrawVertexTouchIcon = L.divIcon({
+  className: "drawVertexIcon drawVertexIcon--touch",
+  html: '<div class="drawVertexDot"></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
 const DrawOptions = {
   polyline: {
     shapeOptions: {
       color: "#ffb347",
       weight: 3,
     },
+    icon: DrawVertexIcon,
+    touchIcon: DrawVertexTouchIcon,
   },
   polygon: {
     allowIntersection: true,
@@ -40,11 +166,14 @@ const DrawOptions = {
       color: "#ffd166",
       weight: 2.5,
     },
+    icon: DrawVertexIcon,
+    touchIcon: DrawVertexTouchIcon,
   },
 };
 
 let ActiveDrawer = null;
 let ActiveDrawMode = null;
+let ActiveDrawTool = null;
 let BoundaryConfirmed = false;
 
 // Marker for search result
@@ -66,6 +195,7 @@ const GlobalSpeedInput = document.getElementById("GlobalSpeedInput");
 const ShapeSpacingInput = document.getElementById("ShapeSpacingInput");
 const ShapeResolutionSlider = document.getElementById("ShapeResolutionSlider");
 const ShapeResolutionValue = document.getElementById("ShapeResolutionValue");
+const ShapeResolutionRow = document.getElementById("ShapeResolutionRow");
 const GenerateFromShapeBtn = document.getElementById("GenerateFromShapeBtn");
 const ClearShapesBtn = document.getElementById("ClearShapesBtn");
 const RotationInput = document.getElementById("RotationInput");
@@ -81,6 +211,10 @@ const ToggleManipulateBtn = document.getElementById("ToggleManipulateBtn");
 const DrawLineBtn = document.getElementById("DrawLineBtn");
 const DrawPolygonBtn = document.getElementById("DrawPolygonBtn");
 const DrawEllipseBtn = document.getElementById("DrawEllipseBtn");
+const DrawOptionsPanel = document.getElementById("DrawOptionsPanel");
+const DrawOptionsTitle = document.getElementById("DrawOptionsTitle");
+const DrawOptionsHint = document.getElementById("DrawOptionsHint");
+const EllipseOptionsSection = document.getElementById("EllipseOptionsSection");
 const EllipseModeBoundaryBtn = document.getElementById("EllipseModeBoundaryBtn");
 const EllipseModeCircBtn = document.getElementById("EllipseModeCircBtn");
 const EllipseResolutionInput = document.getElementById("EllipseResolutionInput");
@@ -90,6 +224,7 @@ const ExportFormatSelect = document.getElementById("ExportFormatSelect");
 const ExportNowBtn = document.getElementById("ExportNowBtn");
 const ImportFileBtn = document.getElementById("ImportFileBtn");
 const ImportFileInput = document.getElementById("ImportFileInput");
+const DropOverlay = document.getElementById("DropOverlay");
 
 // ----- Waypoint state -----
 const Waypoints = [];
@@ -118,11 +253,18 @@ WaypointLine.addTo(MapObj);
 const DEFAULT_ALT = 50;
 const DEFAULT_SPEED = 10;
 const DEFAULT_HEADING = 0;
-const DEFAULT_GIMBAL = 0;
+const DEFAULT_GIMBAL = -45;
 const SettingsState = {
   units: "metric",
   globalAlt: DEFAULT_ALT,
   globalSpeed: DEFAULT_SPEED,
 };
 const METERS_PER_FOOT = 0.3048;
-const ELLIPSE_STYLE = { color: "#9b5de5", weight: 2, fillOpacity: 0.1 };
+const ELLIPSE_STYLE = {
+  color: "#9b5de5",
+  weight: 2,
+  fillOpacity: 0.1,
+  smoothFactor: 0,
+  lineJoin: "round",
+  lineCap: "round",
+};

@@ -32,6 +32,7 @@ function SnapshotState() {
     manipulatePanelOpen: ManipulatePanelOpen,
     exportPanelOpen: ExportPanelOpen,
     isWaypointPanelOpen: IsWaypointPanelOpen,
+    activeDrawTool: ActiveDrawTool,
     boundaryConfirmed: BoundaryConfirmed,
     ellipseMode: EllipseMode,
     ellipseState: EllipseSnapshot,
@@ -108,6 +109,7 @@ function ApplySnapshot(State) {
   ExportPanelOpen = Boolean(State.exportPanelOpen);
   IsWaypointPanelOpen =
     State.isWaypointPanelOpen !== undefined ? State.isWaypointPanelOpen : true;
+  ActiveDrawTool = State.activeDrawTool || null;
   BoundaryConfirmed = Boolean(State.boundaryConfirmed);
   EllipseMode = State.ellipseMode || "boundary";
 
@@ -155,13 +157,12 @@ function ApplySnapshot(State) {
       rx: State.ellipseState.rx,
       ry: State.ellipseState.ry,
       rotationDeg: State.ellipseState.rotationDeg,
+      layer: null,
       handles: [],
       moveHandler: null,
       clickHandler: null,
     };
-    if (!DrawnItems.getLayers().length) {
-      updateEllipseLayer();
-    }
+    updateEllipseLayer();
     refreshHandles();
   }
 

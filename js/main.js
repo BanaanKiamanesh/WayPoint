@@ -80,6 +80,22 @@ document.addEventListener("keydown", (Ev) => {
     RedoHistory();
     return;
   }
+  const isEscape = key === "Escape" || key === "Esc";
+  if (isEscape && !IsEditableTarget(Ev.target)) {
+    if (CancelActiveDrawing()) {
+      Ev.preventDefault();
+      return;
+    }
+  }
+  const isSpace =
+    Ev.code === "Space" || key === " " || keyLower === "spacebar";
+  if (isSpace && !IsEditableTarget(Ev.target)) {
+    Ev.preventDefault();
+    if (typeof FitMapToWindow === "function") {
+      FitMapToWindow();
+    }
+    return;
+  }
   if (isCopy && !IsEditableTarget(Ev.target)) {
     Ev.preventDefault();
     CopySelectedWaypoints();
@@ -98,6 +114,31 @@ document.addEventListener("keydown", (Ev) => {
   }
 });
 
+function CancelActiveDrawing() {
+  const hasActiveDraw = Boolean(ActiveDrawer || ActiveDrawMode === "ellipse");
+  const hasPendingShape = Boolean(
+    (DrawnItems && DrawnItems.getLayers().length) || (EllipseState && EllipseState.center)
+  );
+  if (!hasActiveDraw && !hasPendingShape) return false;
+
+  if (ActiveDrawer && typeof ActiveDrawer.disable === "function") {
+    ActiveDrawer.disable();
+  }
+  ActiveDrawer = null;
+  ActiveDrawMode = null;
+  clearEllipseHandles();
+  EllipseState = null;
+  if (DrawnItems) {
+    DrawnItems.clearLayers();
+  }
+  BoundaryConfirmed = false;
+  LastCoverageModel = null;
+  LastBoundaryFeature = null;
+  UpdateToolsUi();
+  PushHistory();
+  return true;
+}
+
 function IsFileDrag(Ev) {
   if (!Ev || !Ev.dataTransfer) return false;
   const Items = Ev.dataTransfer.items;
@@ -109,17 +150,49 @@ function IsFileDrag(Ev) {
   return Ev.dataTransfer.files && Ev.dataTransfer.files.length > 0;
 }
 
+let FileDragActive = false;
+let DragOverlayCount = 0;
+
+function ShowDropOverlay() {
+  if (!DropOverlay) return;
+  DropOverlay.classList.add("visible");
+  FileDragActive = true;
+}
+
+function HideDropOverlay() {
+  if (!DropOverlay) return;
+  DropOverlay.classList.remove("visible");
+  FileDragActive = false;
+  DragOverlayCount = 0;
+}
+
+document.addEventListener("dragenter", (Ev) => {
+  if (!IsFileDrag(Ev)) return;
+  DragOverlayCount += 1;
+  ShowDropOverlay();
+});
+
 document.addEventListener("dragover", (Ev) => {
   if (!IsFileDrag(Ev)) return;
   Ev.preventDefault();
   if (Ev.dataTransfer) {
     Ev.dataTransfer.dropEffect = "copy";
   }
+  ShowDropOverlay();
+});
+
+document.addEventListener("dragleave", () => {
+  if (!FileDragActive) return;
+  DragOverlayCount = Math.max(DragOverlayCount - 1, 0);
+  if (DragOverlayCount === 0) {
+    HideDropOverlay();
+  }
 });
 
 document.addEventListener("drop", async (Ev) => {
   if (!IsFileDrag(Ev)) return;
   Ev.preventDefault();
+  HideDropOverlay();
   const Files = Ev.dataTransfer && Ev.dataTransfer.files ? Ev.dataTransfer.files : null;
   if (!Files || !Files.length) return;
   try {
@@ -479,6 +552,7 @@ if (ExportDockBtn) {
       ManipulatePanelOpen = false;
     }
     UpdateRightPanelUi();
+    UpdateToolsUi();
     PushHistory();
   });
 }
@@ -573,12 +647,15 @@ if (ToggleToolsBtn) {
   ToggleToolsBtn.addEventListener("click", () => {
     if (ToolsPanelOpen) {
       ToolsPanelOpen = false;
+      StopActiveDrawing();
+      ActiveDrawTool = null;
     } else {
       ToolsPanelOpen = true;
       ManipulatePanelOpen = false;
       ExportPanelOpen = false;
     }
     UpdateRightPanelUi();
+    UpdateToolsUi();
     PushHistory();
   });
 }
@@ -593,6 +670,7 @@ if (ToggleManipulateBtn) {
       ExportPanelOpen = false;
     }
     UpdateRightPanelUi();
+    UpdateToolsUi();
     PushHistory();
   });
 }
@@ -619,9 +697,17 @@ if (UnitRadios && UnitRadios.length) {
     }
     El.addEventListener("change", (Ev) => {
       if (Ev.target.checked) {
-        SettingsState.units = Ev.target.value;
+        const nextUnits = Ev.target.value;
+        const prevUnits = SettingsState.units;
+        if (prevUnits !== nextUnits) {
+          SettingsState.units = nextUnits;
+          ApplyUnitConversion(prevUnits, nextUnits);
+        } else {
+          SettingsState.units = nextUnits;
+        }
         UpdateDistanceLabels();
         UpdateResolutionDisplay();
+        UpdateToolsUi();
         RenderWaypointList();
         PushHistory();
       }
@@ -629,6 +715,63 @@ if (UnitRadios && UnitRadios.length) {
   });
   UpdateDistanceLabels();
   UpdateResolutionDisplay();
+  UpdateToolsUi();
+}
+
+function ApplyUnitConversion(prevUnits, nextUnits) {
+  if (prevUnits === nextUnits) return;
+  const distVal = (val) =>
+    RoundNumber(ConvertDistanceBetweenUnits(val, prevUnits, nextUnits), 3);
+  const speedVal = (val) =>
+    RoundNumber(ConvertSpeedBetweenUnits(val, prevUnits, nextUnits), 3);
+
+  if (Number.isFinite(SettingsState.globalAlt)) {
+    SettingsState.globalAlt = distVal(SettingsState.globalAlt);
+  }
+  if (Number.isFinite(SettingsState.globalSpeed)) {
+    SettingsState.globalSpeed = speedVal(SettingsState.globalSpeed);
+  }
+
+  if (GlobalAltInput) {
+    GlobalAltInput.value = Number.isFinite(SettingsState.globalAlt)
+      ? String(SettingsState.globalAlt)
+      : "";
+  }
+  if (GlobalSpeedInput) {
+    GlobalSpeedInput.value = Number.isFinite(SettingsState.globalSpeed)
+      ? String(SettingsState.globalSpeed)
+      : "";
+  }
+  if (ShapeSpacingInput) {
+    const spacingVal = parseFloat(ShapeSpacingInput.value);
+    if (Number.isFinite(spacingVal)) {
+      ShapeSpacingInput.value = String(distVal(spacingVal));
+    }
+  }
+  if (EllipseResolutionInput) {
+    const ellipseVal = parseFloat(EllipseResolutionInput.value);
+    if (Number.isFinite(ellipseVal)) {
+      EllipseResolutionInput.value = String(distVal(ellipseVal));
+    }
+  }
+
+  Waypoints.forEach((Wp) => {
+    if (Number.isFinite(Wp.Alt)) {
+      Wp.Alt = distVal(Wp.Alt);
+    }
+    if (Number.isFinite(Wp.Speed)) {
+      Wp.Speed = speedVal(Wp.Speed);
+    }
+  });
+
+  Waypoints.forEach((Wp) => {
+    if (Wp.UseGlobalAlt) {
+      Wp.Alt = SettingsState.globalAlt;
+    }
+    if (Wp.UseGlobalSpeed) {
+      Wp.Speed = SettingsState.globalSpeed;
+    }
+  });
 }
 
 // Settings: global altitude/speed

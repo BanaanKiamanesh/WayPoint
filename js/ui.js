@@ -40,11 +40,22 @@ function ConfirmReplaceBoundary() {
 }
 
 function StartDrawing(Mode) {
-  StopActiveDrawing();
+  if (!Mode) return;
+  if (ActiveDrawTool === Mode) {
+    StopActiveDrawing();
+    ActiveDrawTool = null;
+    ActiveDrawMode = null;
+    UpdateToolsUi();
+    PushHistory();
+    return;
+  }
 
   if (!ConfirmReplaceBoundary()) {
     return;
   }
+
+  StopActiveDrawing();
+  ActiveDrawTool = Mode;
   DrawnItems.clearLayers();
   BoundaryConfirmed = false;
   LastCoverageModel = null;
@@ -409,13 +420,51 @@ function UpdateToolsUi() {
   const HasRotationSelection = SelectedIds.size >= 2;
   const AngleValid =
     RotationInput && Number.isFinite(parseFloat(RotationInput.value));
-  const IsDrawingLine = ActiveDrawMode === "polyline";
-  const IsDrawingPoly = ActiveDrawMode === "polygon";
+  const ActiveTool = ActiveDrawTool;
+  const IsLineTool = ActiveTool === "polyline";
+  const IsPolyTool = ActiveTool === "polygon";
+  const IsEllipseTool = ActiveTool === "ellipse";
+  const NeedsResolution = ActiveTool !== "polyline";
   const BoundaryLocked = BoundaryConfirmed;
+  const ShowDrawOptions = Boolean(ToolsPanelOpen && ActiveTool);
+
+  if (DrawOptionsPanel) {
+    DrawOptionsPanel.classList.toggle("visible", ShowDrawOptions);
+    DrawOptionsPanel.setAttribute("aria-hidden", ShowDrawOptions ? "false" : "true");
+  }
+  if (DrawOptionsTitle || DrawOptionsHint) {
+    let TitleText = "Draw tools";
+    let HintText = "Select a shape to begin";
+    if (IsLineTool) {
+      TitleText = "Line tools";
+      HintText = "Spacing along the line";
+    } else if (IsPolyTool) {
+      TitleText = "Polygon tools";
+      HintText = "Spacing and resolution";
+    } else if (IsEllipseTool) {
+      TitleText = "Ellipse tools";
+      HintText = "Spacing and ellipse settings";
+    }
+    if (DrawOptionsTitle) {
+      DrawOptionsTitle.textContent = TitleText;
+    }
+    if (DrawOptionsHint) {
+      DrawOptionsHint.textContent = HintText;
+    }
+  }
+  if (ShapeResolutionRow) {
+    ShapeResolutionRow.style.display = IsLineTool ? "none" : "";
+  }
+  if (EllipseOptionsSection) {
+    EllipseOptionsSection.style.display = IsEllipseTool ? "block" : "none";
+  }
 
   if (GenerateFromShapeBtn) {
     GenerateFromShapeBtn.disabled =
-      !HasShape || !SpacingValid || !ResolutionValid || BoundaryLocked;
+      !HasShape ||
+      !SpacingValid ||
+      (NeedsResolution && !ResolutionValid) ||
+      BoundaryLocked;
   }
   if (ClearShapesBtn) {
     ClearShapesBtn.disabled = !HasShape || BoundaryLocked;
@@ -424,20 +473,21 @@ function UpdateToolsUi() {
     ApplyRotationBtn.disabled = !(HasRotationSelection && AngleValid);
   }
   if (DrawLineBtn) {
-    DrawLineBtn.classList.toggle("active", IsDrawingLine);
+    DrawLineBtn.classList.toggle("active", IsLineTool);
   }
   if (DrawPolygonBtn) {
-    DrawPolygonBtn.classList.toggle("active", IsDrawingPoly);
+    DrawPolygonBtn.classList.toggle("active", IsPolyTool);
   }
   if (DrawEllipseBtn) {
-    DrawEllipseBtn.classList.toggle("active", ActiveDrawMode === "ellipse");
+    DrawEllipseBtn.classList.toggle("active", IsEllipseTool);
   }
   if (ConfirmShapeBtn) {
     ConfirmShapeBtn.disabled = !HasShape || BoundaryLocked;
     ConfirmShapeBtn.classList.toggle("active", BoundaryConfirmed);
   }
   if (ShapeResolutionSlider) {
-    ShapeResolutionSlider.disabled = !HasShape || BoundaryLocked || !LastCoverageModel;
+    ShapeResolutionSlider.disabled =
+      !HasShape || BoundaryLocked || !LastCoverageModel || IsLineTool;
   }
   if (ExportNowBtn) {
     ExportNowBtn.disabled = Waypoints.length === 0;

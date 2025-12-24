@@ -10,6 +10,13 @@ function getWaypointAltitudeMeters(Wp) {
   return SettingsState.units === "imperial" ? alt * METERS_PER_FOOT : alt;
 }
 
+function formatCsvNumber(val, decimals) {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return "";
+  if (Number.isFinite(decimals)) return num.toFixed(decimals);
+  return String(num);
+}
+
 function buildKmlForWaypoints() {
   const placemarks = Waypoints.map((Wp, idx) => {
     const name = EscapeHtml("Waypoint " + (idx + 1));
@@ -47,6 +54,28 @@ function buildKmlForWaypoints() {
   return header + body;
 }
 
+function buildCsvForWaypoints() {
+  const lines = [];
+  lines.push(
+    "lat,lon,alt,speed,heading,gimbal,useGlobalAlt,useGlobalSpeed"
+  );
+  Waypoints.forEach((Wp) => {
+    lines.push(
+      [
+        formatCsvNumber(Wp.Lat, 7),
+        formatCsvNumber(Wp.Lon, 7),
+        formatCsvNumber(Wp.Alt),
+        formatCsvNumber(Wp.Speed),
+        formatCsvNumber(Wp.Heading),
+        formatCsvNumber(Wp.Gimbal),
+        Wp.UseGlobalAlt ? "1" : "0",
+        Wp.UseGlobalSpeed ? "1" : "0",
+      ].join(",")
+    );
+  });
+  return lines.join("\n");
+}
+
 function downloadTextFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -80,6 +109,12 @@ function ExportWaypointsToKml() {
   downloadTextFile(filename, kml, "application/vnd.google-earth.kml+xml");
 }
 
+function ExportWaypointsToCsv() {
+  const csv = buildCsvForWaypoints();
+  const filename = "waypoints.csv";
+  downloadTextFile(filename, csv, "text/csv");
+}
+
 async function ExportWaypointsToKmz() {
   if (typeof JSZip === "undefined") {
     ExportWaypointsToKml();
@@ -102,6 +137,10 @@ async function ExportWaypoints(format) {
       await ExportWaypointsToKmz();
       return;
     }
+    if (fmt === "csv") {
+      ExportWaypointsToCsv();
+      return;
+    }
     ExportWaypointsToKml();
   } catch (Err) {
     console.error("Export failed", Err);
@@ -121,12 +160,17 @@ function parseKmlCoordinateText(text) {
     const hasAlt = parts.length >= 3 && parts[2] !== "";
     const alt = hasAlt ? parseFloat(parts[2]) : null;
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-    coords.push({
+    const altProvided = hasAlt && Number.isFinite(alt);
+    const entry = {
       lat,
       lon,
-      alt: Number.isFinite(alt) ? alt : null,
-      altProvided: hasAlt && Number.isFinite(alt),
-    });
+      alt: altProvided ? alt : null,
+      altProvided,
+    };
+    if (altProvided) {
+      entry.altUnit = "meters";
+    }
+    coords.push(entry);
   });
   return coords;
 }
@@ -154,6 +198,183 @@ function extractWaypointsFromKml(kmlText) {
   for (let i = 0; i < coordNodes.length; i++) {
     coords.push(...parseKmlCoordinateText(coordNodes[i].textContent || ""));
   }
+  return coords;
+}
+
+function normalizeCsvHeaderName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function parseCsvText(text) {
+  if (!text) return [];
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      row.push(field);
+      field = "";
+      continue;
+    }
+
+    if ((ch === "\n" || ch === "\r") && !inQuotes) {
+      if (ch === "\r" && text[i + 1] === "\n") {
+        i += 1;
+      }
+      row.push(field);
+      field = "";
+      if (row.length > 1 || row[0] !== "") {
+        rows.push(row);
+      }
+      row = [];
+      continue;
+    }
+
+    field += ch;
+  }
+
+  if (field.length || row.length) {
+    row.push(field);
+    if (row.length > 1 || row[0] !== "") {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parseCsvBoolean(value) {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim().toLowerCase();
+  if (!text) return null;
+  if (text === "1" || text === "true" || text === "yes" || text === "y") return true;
+  if (text === "0" || text === "false" || text === "no" || text === "n") return false;
+  return null;
+}
+
+function extractWaypointsFromCsv(csvText) {
+  const rows = parseCsvText(csvText);
+  if (!rows.length) return [];
+  const cleanRows = rows.map((row) => row.map((cell) => String(cell || "").trim()));
+  if (!cleanRows.length) return [];
+
+  const headerRow = cleanRows[0];
+  const hasHeader = headerRow.some((cell) => /[a-zA-Z]/.test(cell));
+  const headerIndex = {};
+
+  if (hasHeader) {
+    headerRow.forEach((cell, idx) => {
+      const key = normalizeCsvHeaderName(cell);
+      if (key) {
+        headerIndex[key] = idx;
+      }
+    });
+  }
+
+  const headerAliases = {
+    lat: ["lat", "latitude", "y"],
+    lon: ["lon", "lng", "longitude", "x"],
+    alt: ["alt", "altitude", "elevation", "height"],
+    speed: ["speed", "velocity"],
+    heading: ["heading", "yaw", "bearing"],
+    gimbal: ["gimbal", "pitch"],
+    useGlobalAlt: ["useglobalalt", "globalalt", "useglobalaltitude"],
+    useGlobalSpeed: ["useglobalspeed", "globalspeed"],
+  };
+
+  function getIndex(aliases) {
+    for (let i = 0; i < aliases.length; i += 1) {
+      const key = normalizeCsvHeaderName(aliases[i]);
+      if (headerIndex[key] !== undefined) return headerIndex[key];
+    }
+    return -1;
+  }
+
+  const fallbackIndex = {
+    lat: 0,
+    lon: 1,
+    alt: 2,
+    speed: 3,
+    heading: 4,
+    gimbal: 5,
+    useGlobalAlt: 6,
+    useGlobalSpeed: 7,
+  };
+
+  const startRow = hasHeader ? 1 : 0;
+  const coords = [];
+
+  for (let i = startRow; i < cleanRows.length; i += 1) {
+    const row = cleanRows[i];
+    if (!row.length || row.every((cell) => cell === "")) continue;
+
+    const latIdx = hasHeader ? getIndex(headerAliases.lat) : fallbackIndex.lat;
+    const lonIdx = hasHeader ? getIndex(headerAliases.lon) : fallbackIndex.lon;
+    const latVal = parseFloat(row[latIdx] || "");
+    const lonVal = parseFloat(row[lonIdx] || "");
+    if (!Number.isFinite(latVal) || !Number.isFinite(lonVal)) continue;
+
+    const altIdx = hasHeader ? getIndex(headerAliases.alt) : fallbackIndex.alt;
+    const speedIdx = hasHeader ? getIndex(headerAliases.speed) : fallbackIndex.speed;
+    const headingIdx = hasHeader ? getIndex(headerAliases.heading) : fallbackIndex.heading;
+    const gimbalIdx = hasHeader ? getIndex(headerAliases.gimbal) : fallbackIndex.gimbal;
+    const useAltIdx = hasHeader ? getIndex(headerAliases.useGlobalAlt) : fallbackIndex.useGlobalAlt;
+    const useSpeedIdx =
+      hasHeader ? getIndex(headerAliases.useGlobalSpeed) : fallbackIndex.useGlobalSpeed;
+
+    const altVal = parseFloat(row[altIdx] || "");
+    const speedVal = parseFloat(row[speedIdx] || "");
+    const headingVal = parseFloat(row[headingIdx] || "");
+    const gimbalVal = parseFloat(row[gimbalIdx] || "");
+
+    const useGlobalAlt = parseCsvBoolean(row[useAltIdx]);
+    const useGlobalSpeed = parseCsvBoolean(row[useSpeedIdx]);
+
+    const entry = {
+      lat: latVal,
+      lon: lonVal,
+    };
+
+    if (Number.isFinite(altVal)) {
+      entry.alt = altVal;
+      entry.altProvided = true;
+    }
+    if (Number.isFinite(speedVal)) {
+      entry.speed = speedVal;
+      entry.speedProvided = true;
+    }
+    if (Number.isFinite(headingVal)) {
+      entry.heading = headingVal;
+    }
+    if (Number.isFinite(gimbalVal)) {
+      entry.gimbal = gimbalVal;
+    }
+    if (useGlobalAlt !== null) {
+      entry.useGlobalAlt = useGlobalAlt;
+    }
+    if (useGlobalSpeed !== null) {
+      entry.useGlobalSpeed = useGlobalSpeed;
+    }
+
+    coords.push(entry);
+  }
+
   return coords;
 }
 
@@ -191,13 +412,42 @@ function applyImportedWaypoints(coords) {
       skipRender: true,
       skipHistory: true,
     });
-    if (coord.altProvided) {
+    const hasAlt = Boolean(coord.altProvided);
+    const hasSpeed = Boolean(coord.speedProvided);
+    const useGlobalAlt =
+      coord.useGlobalAlt !== undefined && coord.useGlobalAlt !== null
+        ? Boolean(coord.useGlobalAlt)
+        : !hasAlt;
+    const useGlobalSpeed =
+      coord.useGlobalSpeed !== undefined && coord.useGlobalSpeed !== null
+        ? Boolean(coord.useGlobalSpeed)
+        : !hasSpeed;
+
+    wp.UseGlobalAlt = useGlobalAlt;
+    wp.UseGlobalSpeed = useGlobalSpeed;
+
+    if (hasAlt) {
+      const isMeters = coord.altUnit === "meters";
       const altVal =
-        SettingsState.units === "imperial"
+        isMeters && SettingsState.units === "imperial"
           ? coord.alt / METERS_PER_FOOT
           : coord.alt;
       wp.Alt = altVal;
-      wp.UseGlobalAlt = false;
+    } else if (!useGlobalAlt) {
+      wp.Alt = SettingsState.globalAlt;
+    }
+
+    if (hasSpeed) {
+      wp.Speed = coord.speed;
+    } else if (!useGlobalSpeed) {
+      wp.Speed = SettingsState.globalSpeed;
+    }
+
+    if (Number.isFinite(coord.heading)) {
+      wp.Heading = coord.heading;
+    }
+    if (Number.isFinite(coord.gimbal)) {
+      wp.Gimbal = coord.gimbal;
     }
   });
 
@@ -210,6 +460,7 @@ async function ImportWaypointsFromFile(file) {
   if (!file) return;
   const name = (file.name || "").toLowerCase();
   let kmlText = "";
+  let coords = [];
 
   if (name.endsWith(".kmz")) {
     if (typeof JSZip === "undefined") {
@@ -225,14 +476,18 @@ async function ImportWaypointsFromFile(file) {
     const docKml =
       kmlFiles.find((entry) => entry.name.toLowerCase().endsWith("doc.kml")) || kmlFiles[0];
     kmlText = await docKml.async("text");
+    coords = extractWaypointsFromKml(kmlText);
   } else if (name.endsWith(".kml")) {
     kmlText = await file.text();
+    coords = extractWaypointsFromKml(kmlText);
+  } else if (name.endsWith(".csv")) {
+    const csvText = await file.text();
+    coords = extractWaypointsFromCsv(csvText);
   } else {
-    alert("Unsupported file type. Please use KML or KMZ.");
+    alert("Unsupported file type. Please use KML, KMZ, or CSV.");
     return;
   }
 
-  const coords = extractWaypointsFromKml(kmlText);
   if (!coords.length) {
     alert("No waypoints found in file.");
     return;

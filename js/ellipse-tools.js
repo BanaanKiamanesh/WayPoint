@@ -15,16 +15,31 @@ function clearEllipseHandles() {
 
 function updateEllipseLayer() {
   if (!EllipseState || !EllipseState.center) return;
+  const rx = EllipseState.rx || 10;
+  const ry = EllipseState.ry || 10;
+  const rotation = EllipseState.rotationDeg || 0;
+  const segments = getEllipseSegments(EllipseState.center, rx, ry);
   const pts = computeEllipsePoints(
     [EllipseState.center.lat, EllipseState.center.lng],
-    EllipseState.rx || 10,
-    EllipseState.ry || 10,
-    EllipseState.rotationDeg || 0
+    rx,
+    ry,
+    rotation,
+    segments
   );
-  DrawnItems.clearLayers();
-  const poly = L.polygon(pts, ELLIPSE_STYLE);
-  DrawnItems.addLayer(poly);
-  LastBoundaryFeature = poly.toGeoJSON();
+
+  if (!EllipseState.layer) {
+    EllipseState.layer = L.polygon(pts, ELLIPSE_STYLE);
+    DrawnItems.clearLayers();
+    DrawnItems.addLayer(EllipseState.layer);
+  } else {
+    EllipseState.layer.setLatLngs(pts);
+    if (!DrawnItems.hasLayer(EllipseState.layer)) {
+      DrawnItems.clearLayers();
+      DrawnItems.addLayer(EllipseState.layer);
+    }
+  }
+
+  LastBoundaryFeature = EllipseState.layer.toGeoJSON();
   LastCoverageModel = null;
 }
 
@@ -32,14 +47,14 @@ function createHandle(latlng, onDrag, onDragEnd, variant = "default") {
   const isRotation = variant === "rotate";
   const html = isRotation
     ? '<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:#ff8c00;font-size:18px;transform:rotate(-20deg);text-shadow:0 0 6px rgba(0,0,0,0.6);">&#8635;</div>'
-    : '<div style="width:12px;height:12px;border-radius:6px;background:#ff8c00;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>';
+    : '<div class="drawVertexDot"></div>';
   const marker = L.marker(latlng, {
     draggable: true,
     icon: L.divIcon({
-      className: "ellipseHandle",
+      className: isRotation ? "ellipseHandle" : "ellipseHandle drawVertexIcon",
       html,
-      iconSize: isRotation ? [22, 22] : [14, 14],
-      iconAnchor: isRotation ? [11, 11] : [7, 7],
+      iconSize: isRotation ? [22, 22] : [16, 16],
+      iconAnchor: isRotation ? [11, 11] : [8, 8],
     }),
   });
   if (onDrag) marker.on("drag", (ev) => onDrag(ev.latlng));
@@ -53,6 +68,31 @@ function createHandle(latlng, onDrag, onDragEnd, variant = "default") {
   return marker;
 }
 
+function wrapLngNearCenter(lng, centerLng) {
+  const diff = lng - centerLng;
+  const wrapped = ((diff + 180) % 360 + 360) % 360 - 180;
+  return centerLng + wrapped;
+}
+
+function wrapLatLngNearCenter(latlng, center) {
+  return L.latLng(latlng.lat, wrapLngNearCenter(latlng.lng, center.lng));
+}
+
+function getEllipseSegments(center, rx, ry) {
+  if (!MapObj || !center) return 360;
+  const centerPt = MapObj.latLngToLayerPoint(center);
+  const east = wrapLatLngNearCenter(localMetersToLatLng(center, rx, 0), center);
+  const north = wrapLatLngNearCenter(localMetersToLatLng(center, 0, ry), center);
+  const eastPt = MapObj.latLngToLayerPoint(east);
+  const northPt = MapObj.latLngToLayerPoint(north);
+  const rxPx = Math.max(1, Math.abs(eastPt.x - centerPt.x));
+  const ryPx = Math.max(1, Math.abs(northPt.y - centerPt.y));
+  const approxCirc =
+    Math.PI * (3 * (rxPx + ryPx) - Math.sqrt((3 * rxPx + ryPx) * (rxPx + 3 * ryPx)));
+  const segments = Math.ceil(approxCirc / 0.6);
+  return Math.min(Math.max(segments, 360), 20000);
+}
+
 function refreshHandles() {
   if (!EllipseState) return;
   clearEllipseHandles();
@@ -62,20 +102,20 @@ function refreshHandles() {
   const rx = EllipseState.rx || 10;
   const ry = EllipseState.ry || 10;
 
-  // Axis end points in local frame, then rotate to world
   const axisX = rotateXY(rx, 0, rotRad);
   const axisY = rotateXY(0, ry, rotRad);
   const rotVec = rotateXY(rx * 1.2, 0, rotRad);
 
-  const east = localMetersToLatLng(center, axisX[0], axisX[1]);
-  const north = localMetersToLatLng(center, axisY[0], axisY[1]);
-  const rotHandle = localMetersToLatLng(center, rotVec[0], rotVec[1]);
+  const east = wrapLatLngNearCenter(localMetersToLatLng(center, axisX[0], axisX[1]), center);
+  const north = wrapLatLngNearCenter(localMetersToLatLng(center, axisY[0], axisY[1]), center);
+  const rotHandle = wrapLatLngNearCenter(localMetersToLatLng(center, rotVec[0], rotVec[1]), center);
 
   const centerHandle = createHandle(
     center,
     (ll) => {
-      EllipseState.center = ll;
+      EllipseState.center = wrapLatLngNearCenter(ll, EllipseState.center || ll);
       updateEllipseLayer();
+      syncEllipseHandles();
     },
     () => refreshHandles()
   );
@@ -83,12 +123,15 @@ function refreshHandles() {
   const rxHandle = createHandle(
     east,
     (ll) => {
-      const { x, y } = latLngToLocalMeters(center, ll);
-      const [xr] = rotateXY(x, y, -rotRad);
+      const centerNow = EllipseState.center;
+      if (!centerNow) return;
+      const wrapped = wrapLatLngNearCenter(ll, centerNow);
+      const rotNow = ((EllipseState.rotationDeg || 0) * Math.PI) / 180;
+      const { x, y } = latLngToLocalMeters(centerNow, wrapped);
+      const [xr] = rotateXY(x, y, -rotNow);
       EllipseState.rx = Math.max(1, Math.abs(xr));
       updateEllipseLayer();
-      const snappedVec = rotateXY(EllipseState.rx, 0, rotRad);
-      rxHandle.setLatLng(localMetersToLatLng(center, snappedVec[0], snappedVec[1]));
+      syncEllipseHandles();
     },
     () => refreshHandles()
   );
@@ -96,12 +139,15 @@ function refreshHandles() {
   const ryHandle = createHandle(
     north,
     (ll) => {
-      const { x, y } = latLngToLocalMeters(center, ll);
-      const [, yr] = rotateXY(x, y, -rotRad);
+      const centerNow = EllipseState.center;
+      if (!centerNow) return;
+      const wrapped = wrapLatLngNearCenter(ll, centerNow);
+      const rotNow = ((EllipseState.rotationDeg || 0) * Math.PI) / 180;
+      const { x, y } = latLngToLocalMeters(centerNow, wrapped);
+      const [, yr] = rotateXY(x, y, -rotNow);
       EllipseState.ry = Math.max(1, Math.abs(yr));
       updateEllipseLayer();
-      const vec = rotateXY(0, EllipseState.ry, rotRad);
-      ryHandle.setLatLng(localMetersToLatLng(center, vec[0], vec[1]));
+      syncEllipseHandles();
     },
     () => refreshHandles()
   );
@@ -109,12 +155,14 @@ function refreshHandles() {
   const rotHandleMarker = createHandle(
     rotHandle,
     (ll) => {
-      const { x, y } = latLngToLocalMeters(center, ll);
+      const centerNow = EllipseState.center;
+      if (!centerNow) return;
+      const wrapped = wrapLatLngNearCenter(ll, centerNow);
+      const { x, y } = latLngToLocalMeters(centerNow, wrapped);
       const ang = (Math.atan2(y, x) * 180) / Math.PI;
       EllipseState.rotationDeg = (ang + 360) % 360;
       updateEllipseLayer();
-      const vec = rotateXY(rx * 1.2, 0, (EllipseState.rotationDeg * Math.PI) / 180);
-      rotHandleMarker.setLatLng(localMetersToLatLng(center, vec[0], vec[1]));
+      syncEllipseHandles();
     },
     () => refreshHandles(),
     "rotate"
@@ -123,12 +171,47 @@ function refreshHandles() {
   EllipseState.handles.push(centerHandle, rxHandle, ryHandle, rotHandleMarker);
 }
 
+function syncEllipseHandles() {
+  if (!EllipseState || !EllipseState.center || !EllipseState.handles || EllipseState.handles.length < 4)
+    return;
+  const center = EllipseState.center;
+  const rotRad = (EllipseState.rotationDeg || 0) * (Math.PI / 180);
+  const rx = EllipseState.rx || 10;
+  const ry = EllipseState.ry || 10;
+  const axisX = rotateXY(rx, 0, rotRad);
+  const axisY = rotateXY(0, ry, rotRad);
+  const rotVec = rotateXY(rx * 1.2, 0, rotRad);
+
+  const centerHandle = EllipseState.handles[0];
+  const rxHandle = EllipseState.handles[1];
+  const ryHandle = EllipseState.handles[2];
+  const rotHandle = EllipseState.handles[3];
+
+  if (centerHandle) centerHandle.setLatLng(center);
+  if (rxHandle) {
+    rxHandle.setLatLng(
+      wrapLatLngNearCenter(localMetersToLatLng(center, axisX[0], axisX[1]), center)
+    );
+  }
+  if (ryHandle) {
+    ryHandle.setLatLng(
+      wrapLatLngNearCenter(localMetersToLatLng(center, axisY[0], axisY[1]), center)
+    );
+  }
+  if (rotHandle) {
+    rotHandle.setLatLng(
+      wrapLatLngNearCenter(localMetersToLatLng(center, rotVec[0], rotVec[1]), center)
+    );
+  }
+}
+
 function startEllipseInteraction() {
   EllipseState = {
     center: null,
     rx: 30,
     ry: 30,
     rotationDeg: 0,
+    layer: null,
     handles: [],
     moveHandler: null,
     clickHandler: null,
@@ -142,12 +225,9 @@ function startEllipseInteraction() {
       // live preview radius: follow mouse
       const moveHandler = (mv) => {
         if (!EllipseState.center) return;
-        const dist =
-          turf.distance(
-            [EllipseState.center.lng, EllipseState.center.lat],
-            [mv.latlng.lng, mv.latlng.lat],
-            { units: "kilometers" }
-          ) * 1000;
+        const wrapped = wrapLatLngNearCenter(mv.latlng, EllipseState.center);
+        const { x, y } = latLngToLocalMeters(EllipseState.center, wrapped);
+        const dist = Math.sqrt(x * x + y * y);
         EllipseState.rx = Math.max(1, dist);
         EllipseState.ry = Math.max(1, dist);
         updateEllipseLayer();
@@ -156,12 +236,10 @@ function startEllipseInteraction() {
       MapObj.on("mousemove", moveHandler);
       step = 1;
     } else if (step === 1) {
-      const d = turf.distance(
-        [EllipseState.center.lng, EllipseState.center.lat],
-        [ev.latlng.lng, ev.latlng.lat],
-        { units: "kilometers" }
-      );
-      EllipseState.rx = Math.max(1, d * 1000);
+      const wrapped = wrapLatLngNearCenter(ev.latlng, EllipseState.center);
+      const { x, y } = latLngToLocalMeters(EllipseState.center, wrapped);
+      const dist = Math.sqrt(x * x + y * y);
+      EllipseState.rx = Math.max(1, dist);
       EllipseState.ry = EllipseState.rx;
       updateEllipseLayer();
       refreshHandles();
