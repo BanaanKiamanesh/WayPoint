@@ -563,6 +563,11 @@ if (ExportFormatSelect) {
     PushHistory();
   });
 }
+if (ExportPathModeSelect) {
+  ExportPathModeSelect.addEventListener("change", () => {
+    PushHistory();
+  });
+}
 
 if (ExportDockBtn) {
   ExportDockBtn.addEventListener("click", () => {

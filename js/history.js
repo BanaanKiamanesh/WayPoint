@@ -58,6 +58,7 @@ function SnapshotState() {
     ellipseRotationValue: EllipseRotationInput ? EllipseRotationInput.value : null,
     rotationValue: RotationInput ? RotationInput.value : null,
     exportFormatValue: ExportFormatSelect ? ExportFormatSelect.value : null,
+    exportPathModeValue: ExportPathModeSelect ? ExportPathModeSelect.value : null,
   };
 }
 
@@ -112,6 +113,9 @@ function ApplySnapshot(State) {
   }
   if (ExportFormatSelect && State.exportFormatValue !== null) {
     ExportFormatSelect.value = State.exportFormatValue;
+  }
+  if (ExportPathModeSelect && State.exportPathModeValue !== null) {
+    ExportPathModeSelect.value = State.exportPathModeValue;
   }
 
   LeftPanelOpen = Boolean(State.leftPanelOpen);

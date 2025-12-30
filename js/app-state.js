@@ -31,12 +31,13 @@ let MapModeBtnSat = null;
 function setBaseLayer(mode) {
   const useSatellite = mode === "satellite";
   const nextLayer = useSatellite ? SatelliteTiles : OsmTiles;
-  if (ActiveBaseLayer === nextLayer) return;
-  if (ActiveBaseLayer) {
-    MapObj.removeLayer(ActiveBaseLayer);
+  if (ActiveBaseLayer !== nextLayer) {
+    if (ActiveBaseLayer) {
+      MapObj.removeLayer(ActiveBaseLayer);
+    }
+    ActiveBaseLayer = nextLayer;
+    ActiveBaseLayer.addTo(MapObj);
   }
-  ActiveBaseLayer = nextLayer;
-  ActiveBaseLayer.addTo(MapObj);
   if (MapModeBtnMap && MapModeBtnSat) {
     MapModeBtnMap.classList.toggle("active", !useSatellite);
     MapModeBtnSat.classList.toggle("active", useSatellite);
@@ -102,6 +103,29 @@ MapModeControl.onAdd = () => {
   return Wrap;
 };
 MapModeControl.addTo(MapObj);
+
+const AttributionToggleControl = L.control({ position: "bottomright" });
+AttributionToggleControl.onAdd = () => {
+  const Wrap = L.DomUtil.create("div", "attribToggleControl");
+  const Btn = L.DomUtil.create("button", "attribToggleButton", Wrap);
+  Btn.type = "button";
+  Btn.title = "Map attribution";
+  Btn.setAttribute("aria-label", "Map attribution");
+  Btn.setAttribute("aria-pressed", "false");
+  Btn.textContent = "i";
+
+  L.DomEvent.on(Btn, "click", (Ev) => {
+    L.DomEvent.stop(Ev);
+    const MapEl = MapObj.getContainer();
+    const IsOpen = MapEl.classList.toggle("showAttribution");
+    Btn.setAttribute("aria-pressed", IsOpen ? "true" : "false");
+  });
+
+  L.DomEvent.disableClickPropagation(Wrap);
+  L.DomEvent.disableScrollPropagation(Wrap);
+  return Wrap;
+};
+AttributionToggleControl.addTo(MapObj);
 
 const HomeControl = L.control({ position: "bottomleft" });
 HomeControl.onAdd = () => {
@@ -225,6 +249,7 @@ const EllipseResolutionInput = document.getElementById("EllipseResolutionInput")
 const EllipseRotationInput = document.getElementById("EllipseRotationInput");
 const ExportDockBtn = document.getElementById("ExportDockBtn");
 const ExportFormatSelect = document.getElementById("ExportFormatSelect");
+const ExportPathModeSelect = document.getElementById("ExportPathModeSelect");
 const ExportNowBtn = document.getElementById("ExportNowBtn");
 const ImportFileBtn = document.getElementById("ImportFileBtn");
 const ImportFileInput = document.getElementById("ImportFileInput");

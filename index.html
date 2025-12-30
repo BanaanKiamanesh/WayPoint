@@ -264,9 +264,16 @@
             <div class="settingsRow inlineRow">
               <label class="settingsLabel" for="ExportFormatSelect">Format</label>
               <select id="ExportFormatSelect">
-                <option value="kml" selected>KML</option>
-                <option value="kmz">KMZ</option>
+                <option value="kml">KML</option>
+                <option value="kmz" selected>DJI Fly KMZ</option>
                 <option value="csv">CSV</option>
+              </select>
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="ExportPathModeSelect">Path mode (DJI)</label>
+              <select id="ExportPathModeSelect">
+                <option value="curved" selected>Curved</option>
+                <option value="straight">Straight</option>
               </select>
             </div>
             <div class="settingsRow buttonRow">
@@ -300,8 +307,12 @@
         >
           <svg class="dockButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path
-              d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0L15.13 4.9l3.75 3.75 1.83-1.61z"
+              d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25z"
               fill="currentColor"
+            />
+            <path
+              d="M20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0L15.13 4.9l3.75 3.75 1.83-1.61z"
+              fill="#ff4d4d"
             />
           </svg>
         </button>

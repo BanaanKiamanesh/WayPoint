@@ -17,6 +17,341 @@ function formatCsvNumber(val, decimals) {
   return String(num);
 }
 
+const WPML_NS = "http://www.dji.com/wpmz/1.0.2";
+const DJI_DEFAULT_DRONE_ENUM = 77; // Mavic 3 Enterprise series (best-effort default)
+const DJI_DEFAULT_DRONE_SUB = 0;
+const DJI_DEFAULT_PAYLOAD_ENUM = 66; // M3E camera (best-effort default)
+const DJI_DEFAULT_PAYLOAD_POS = 0;
+const DJI_DEFAULT_RTH_HEIGHT_M = 100;
+const DJI_DEFAULT_SAFE_HEIGHT_M = 20;
+const DJI_DEFAULT_TURN_DAMPING_DIST_M = 0.2;
+
+function clampNumber(val, min, max, fallback) {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(Math.max(num, min), max);
+}
+
+function formatWpmlNumber(val, decimals) {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return "0";
+  const places = Number.isFinite(decimals) ? decimals : 2;
+  return num.toFixed(places);
+}
+
+function toMetersDistance(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return SettingsState.units === "imperial" ? num * METERS_PER_FOOT : num;
+}
+
+function toSpeedMs(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return SettingsState.units === "imperial" ? num * MS_PER_MPH : num;
+}
+
+function getGlobalAltMeters() {
+  return toMetersDistance(SettingsState.globalAlt);
+}
+
+function getGlobalSpeedMs() {
+  const speedMs = toSpeedMs(SettingsState.globalSpeed);
+  return clampNumber(speedMs, 1, 15, 5);
+}
+
+function getWaypointAltMeters(Wp, globalAltMeters) {
+  if (!Wp) return 0;
+  if (Wp.UseGlobalAlt) return globalAltMeters;
+  return toMetersDistance(Wp.Alt);
+}
+
+function getWaypointSpeedMs(Wp, globalSpeedMs) {
+  if (!Wp) return globalSpeedMs;
+  if (Wp.UseGlobalSpeed) return globalSpeedMs;
+  const speedMs = toSpeedMs(Wp.Speed);
+  return clampNumber(speedMs, 1, 15, globalSpeedMs);
+}
+
+function getWpmlTurnSettings() {
+  const isStraight =
+    ExportPathModeSelect && ExportPathModeSelect.value === "straight";
+  return {
+    turnMode: "toPointAndStopWithContinuityCurvature",
+    useStraightLine: isStraight ? 1 : 0,
+    turnDampingDist: isStraight ? 0 : DJI_DEFAULT_TURN_DAMPING_DIST_M,
+  };
+}
+
+function buildWpmlHeadingParam(indent) {
+  const lines = [];
+  lines.push(indent + "<wpml:waypointHeadingParam>");
+  lines.push(
+    indent + "  <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>"
+  );
+  lines.push(
+    indent + "  <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>"
+  );
+  lines.push(indent + "</wpml:waypointHeadingParam>");
+  return lines.join("\n");
+}
+
+function buildWpmlTurnParam(indent, turnMode, turnDampingDist) {
+  const lines = [];
+  lines.push(indent + "<wpml:waypointTurnParam>");
+  lines.push(
+    indent + "  <wpml:waypointTurnMode>" + turnMode + "</wpml:waypointTurnMode>"
+  );
+  if (Number.isFinite(turnDampingDist)) {
+    lines.push(
+      indent +
+        "  <wpml:waypointTurnDampingDist>" +
+        formatWpmlNumber(turnDampingDist, 1) +
+        "</wpml:waypointTurnDampingDist>"
+    );
+  }
+  lines.push(indent + "</wpml:waypointTurnParam>");
+  return lines.join("\n");
+}
+
+function buildWpmlMissionConfig(indent, takeoffRefPoint, takeoffRefPointAgl) {
+  const globalSpeedMs = getGlobalSpeedMs();
+  const safeHeight = clampNumber(DJI_DEFAULT_SAFE_HEIGHT_M, 1.2, 1500, 20);
+  const rthHeight = clampNumber(DJI_DEFAULT_RTH_HEIGHT_M, 2, 1500, 100);
+  const lines = [];
+  lines.push(indent + "<wpml:missionConfig>");
+  lines.push(indent + "  <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>");
+  lines.push(indent + "  <wpml:finishAction>goHome</wpml:finishAction>");
+  lines.push(indent + "  <wpml:exitOnRCLost>goContinue</wpml:exitOnRCLost>");
+  lines.push(indent + "  <wpml:executeRCLostAction>hover</wpml:executeRCLostAction>");
+  lines.push(
+    indent + "  <wpml:takeOffSecurityHeight>" + formatWpmlNumber(safeHeight, 1) + "</wpml:takeOffSecurityHeight>"
+  );
+  if (takeoffRefPoint) {
+    lines.push(indent + "  <wpml:takeOffRefPoint>" + takeoffRefPoint + "</wpml:takeOffRefPoint>");
+  }
+  if (Number.isFinite(takeoffRefPointAgl)) {
+    lines.push(
+      indent +
+        "  <wpml:takeOffRefPointAGLHeight>" +
+        formatWpmlNumber(takeoffRefPointAgl, 1) +
+        "</wpml:takeOffRefPointAGLHeight>"
+    );
+  }
+  lines.push(
+    indent +
+      "  <wpml:globalTransitionalSpeed>" +
+      formatWpmlNumber(globalSpeedMs, 2) +
+      "</wpml:globalTransitionalSpeed>"
+  );
+  lines.push(
+    indent +
+      "  <wpml:globalRTHHeight>" +
+      formatWpmlNumber(rthHeight, 1) +
+      "</wpml:globalRTHHeight>"
+  );
+  lines.push(indent + "  <wpml:droneInfo>");
+  lines.push(
+    indent + "    <wpml:droneEnumValue>" + DJI_DEFAULT_DRONE_ENUM + "</wpml:droneEnumValue>"
+  );
+  lines.push(
+    indent + "    <wpml:droneSubEnumValue>" + DJI_DEFAULT_DRONE_SUB + "</wpml:droneSubEnumValue>"
+  );
+  lines.push(indent + "  </wpml:droneInfo>");
+  lines.push(indent + "  <wpml:payloadInfo>");
+  lines.push(
+    indent + "    <wpml:payloadEnumValue>" + DJI_DEFAULT_PAYLOAD_ENUM + "</wpml:payloadEnumValue>"
+  );
+  lines.push(
+    indent +
+      "    <wpml:payloadPositionIndex>" +
+      DJI_DEFAULT_PAYLOAD_POS +
+      "</wpml:payloadPositionIndex>"
+  );
+  lines.push(indent + "  </wpml:payloadInfo>");
+  lines.push(indent + "</wpml:missionConfig>");
+  return lines.join("\n");
+}
+
+function buildWpmlTemplateKml() {
+  const now = Date.now();
+  const globalAltMeters = getGlobalAltMeters();
+  const globalSpeedMs = getGlobalSpeedMs();
+  const { turnMode, useStraightLine, turnDampingDist } = getWpmlTurnSettings();
+  const takeoffPoint =
+    Waypoints.length > 0
+      ? [
+          formatWpmlNumber(Waypoints[0].Lat, 6),
+          formatWpmlNumber(Waypoints[0].Lon, 6),
+          formatWpmlNumber(getWaypointAltMeters(Waypoints[0], globalAltMeters), 1),
+        ].join(",")
+      : null;
+
+  const lines = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push(
+    '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="' + WPML_NS + '">'
+  );
+  lines.push("  <Document>");
+  lines.push("    <wpml:author>Waypoint KMZ Planner</wpml:author>");
+  lines.push("    <wpml:createTime>" + now + "</wpml:createTime>");
+  lines.push("    <wpml:updateTime>" + now + "</wpml:updateTime>");
+  lines.push(buildWpmlMissionConfig("    ", takeoffPoint, 0));
+  lines.push("    <Folder>");
+  lines.push("      <wpml:templateType>waypoint</wpml:templateType>");
+  lines.push("      <wpml:templateId>0</wpml:templateId>");
+  lines.push("      <wpml:waylineCoordinateSysParam>");
+  lines.push("        <wpml:coordinateMode>WGS84</wpml:coordinateMode>");
+  lines.push("        <wpml:heightMode>relativeToStartPoint</wpml:heightMode>");
+  lines.push("        <wpml:positioningType>GPS</wpml:positioningType>");
+  lines.push(
+    "        <wpml:globalShootHeight>" +
+      formatWpmlNumber(globalAltMeters, 1) +
+      "</wpml:globalShootHeight>"
+  );
+  lines.push("        <wpml:surfaceFollowModeEnable>0</wpml:surfaceFollowModeEnable>");
+  lines.push(
+    "        <wpml:surfaceRelativeHeight>" +
+      formatWpmlNumber(globalAltMeters, 1) +
+      "</wpml:surfaceRelativeHeight>"
+  );
+  lines.push("      </wpml:waylineCoordinateSysParam>");
+  lines.push(
+    "      <wpml:autoFlightSpeed>" +
+      formatWpmlNumber(globalSpeedMs, 2) +
+      "</wpml:autoFlightSpeed>"
+  );
+  lines.push("      <wpml:gimbalPitchMode>usePointSetting</wpml:gimbalPitchMode>");
+  lines.push("      <wpml:globalWaypointHeadingParam>");
+  lines.push(
+    "        <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>"
+  );
+  lines.push(
+    "        <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>"
+  );
+  lines.push("      </wpml:globalWaypointHeadingParam>");
+  lines.push(
+    "      <wpml:globalWaypointTurnMode>" +
+      turnMode +
+      "</wpml:globalWaypointTurnMode>"
+  );
+  lines.push(
+    "      <wpml:globalUseStraightLine>" + useStraightLine + "</wpml:globalUseStraightLine>"
+  );
+  lines.push(
+    "      <wpml:globalHeight>" +
+      formatWpmlNumber(globalAltMeters, 1) +
+      "</wpml:globalHeight>"
+  );
+
+  Waypoints.forEach((Wp, idx) => {
+    const altMeters = getWaypointAltMeters(Wp, globalAltMeters);
+    const useGlobalAlt = Wp.UseGlobalAlt ? 1 : 0;
+    const useGlobalSpeed = Wp.UseGlobalSpeed ? 1 : 0;
+    const gimbalPitch = Number.isFinite(Wp.Gimbal) ? Wp.Gimbal : 0;
+
+    lines.push("      <Placemark>");
+    lines.push("        <Point>");
+    lines.push(
+      "          <coordinates>" +
+        formatWpmlNumber(Wp.Lon, 7) +
+        "," +
+        formatWpmlNumber(Wp.Lat, 7) +
+        "</coordinates>"
+    );
+    lines.push("        </Point>");
+    lines.push("        <wpml:index>" + idx + "</wpml:index>");
+    lines.push(
+      "        <wpml:ellipsoidHeight>" +
+        formatWpmlNumber(altMeters, 1) +
+        "</wpml:ellipsoidHeight>"
+    );
+    lines.push(
+      "        <wpml:height>" +
+        formatWpmlNumber(altMeters, 1) +
+        "</wpml:height>"
+    );
+    lines.push("        <wpml:useGlobalHeight>" + useGlobalAlt + "</wpml:useGlobalHeight>");
+    lines.push("        <wpml:useGlobalSpeed>" + useGlobalSpeed + "</wpml:useGlobalSpeed>");
+    lines.push("        <wpml:useGlobalHeadingParam>1</wpml:useGlobalHeadingParam>");
+    lines.push("        <wpml:useGlobalTurnParam>1</wpml:useGlobalTurnParam>");
+    lines.push(
+      "        <wpml:gimbalPitchAngle>" + formatWpmlNumber(gimbalPitch, 1) + "</wpml:gimbalPitchAngle>"
+    );
+    lines.push(buildWpmlHeadingParam("        "));
+    lines.push(buildWpmlTurnParam("        ", turnMode, turnDampingDist));
+    lines.push("        <wpml:useStraightLine>" + useStraightLine + "</wpml:useStraightLine>");
+    lines.push("      </Placemark>");
+  });
+
+  lines.push("    </Folder>");
+  lines.push("  </Document>");
+  lines.push("</kml>");
+  return lines.join("\n");
+}
+
+function buildWpmlWaylines() {
+  const globalAltMeters = getGlobalAltMeters();
+  const globalSpeedMs = getGlobalSpeedMs();
+  const { turnMode, useStraightLine, turnDampingDist } = getWpmlTurnSettings();
+  const takeoffPoint =
+    Waypoints.length > 0
+      ? [
+          formatWpmlNumber(Waypoints[0].Lat, 6),
+          formatWpmlNumber(Waypoints[0].Lon, 6),
+          formatWpmlNumber(getWaypointAltMeters(Waypoints[0], globalAltMeters), 1),
+        ].join(",")
+      : null;
+
+  const lines = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push(
+    '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="' + WPML_NS + '">'
+  );
+  lines.push("  <Document>");
+  lines.push(buildWpmlMissionConfig("    ", takeoffPoint, 0));
+  lines.push("    <Folder>");
+  lines.push("      <wpml:templateId>0</wpml:templateId>");
+  lines.push("      <wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>");
+  lines.push("      <wpml:waylineId>0</wpml:waylineId>");
+  lines.push(
+    "      <wpml:autoFlightSpeed>" +
+      formatWpmlNumber(globalSpeedMs, 2) +
+      "</wpml:autoFlightSpeed>"
+  );
+
+  Waypoints.forEach((Wp, idx) => {
+    const altMeters = getWaypointAltMeters(Wp, globalAltMeters);
+    const speedMs = getWaypointSpeedMs(Wp, globalSpeedMs);
+    lines.push("      <Placemark>");
+    lines.push("        <Point>");
+    lines.push(
+      "          <coordinates>" +
+        formatWpmlNumber(Wp.Lon, 7) +
+        "," +
+        formatWpmlNumber(Wp.Lat, 7) +
+        "</coordinates>"
+    );
+    lines.push("        </Point>");
+    lines.push("        <wpml:index>" + idx + "</wpml:index>");
+    lines.push(
+      "        <wpml:executeHeight>" + formatWpmlNumber(altMeters, 1) + "</wpml:executeHeight>"
+    );
+    lines.push(
+      "        <wpml:waypointSpeed>" + formatWpmlNumber(speedMs, 2) + "</wpml:waypointSpeed>"
+    );
+    lines.push(buildWpmlHeadingParam("        "));
+    lines.push(buildWpmlTurnParam("        ", turnMode, turnDampingDist));
+    lines.push("        <wpml:useStraightLine>" + useStraightLine + "</wpml:useStraightLine>");
+    lines.push("      </Placemark>");
+  });
+
+  lines.push("    </Folder>");
+  lines.push("  </Document>");
+  lines.push("</kml>");
+  return lines.join("\n");
+}
+
 function buildKmlForWaypoints() {
   const placemarks = Waypoints.map((Wp, idx) => {
     const name = EscapeHtml("Waypoint " + (idx + 1));
@@ -120,9 +455,11 @@ async function ExportWaypointsToKmz() {
     ExportWaypointsToKml();
     return;
   }
-  const kml = buildKmlForWaypoints();
+  const templateKml = buildWpmlTemplateKml();
+  const waylinesWpml = buildWpmlWaylines();
   const zip = new JSZip();
-  zip.file("doc.kml", kml);
+  zip.file("wpmz/template.kml", templateKml);
+  zip.file("wpmz/waylines.wpml", waylinesWpml);
   const blob = await zip.generateAsync({
     type: "blob",
     mimeType: "application/vnd.google-earth.kmz",

@@ -23,6 +23,7 @@ class GridMap {
     this.centerX = centerX;
     this.centerY = centerY;
     this.data = Array.from({ length: height }, () => new Float32Array(width));
+    this.freeCount = 0;
   }
 
   worldToIndex(x, y) {
@@ -53,6 +54,7 @@ class GridMap {
   }
 
   setPolygonFreeArea(ox, oy) {
+    this.freeCount = 0;
     const polygon = {
       type: "Feature",
       geometry: { type: "Polygon", coordinates: [ox.map((v, i) => [v, oy[i]])] },
@@ -62,7 +64,12 @@ class GridMap {
       for (let ix = 0; ix < this.width; ix++) {
         const [x, y] = this.indexToWorld(ix, iy);
         const inside = turf.booleanPointInPolygon([x, y], polygon);
-        if (!inside) this.data[iy][ix] = 1.0;
+        if (!inside) {
+          this.data[iy][ix] = 1.0;
+        } else {
+          this.data[iy][ix] = 0.0;
+          this.freeCount += 1;
+        }
       }
     }
   }
@@ -375,9 +382,25 @@ class SweepSearcher {
 
 function sweepPathSearch(sweepSearcher, gridMap) {
   let [cX, cY] = sweepSearcher.searchStartGrid(gridMap);
-  if (!gridMap.setValue(cX, cY, 0.5)) {
-    return [[], []];
+  if (gridMap.checkOccupied(cX, cY, 1.0)) {
+    return { px: [], py: [], visitedCount: 0 };
   }
+
+  let visitedCount = 0;
+  const markVisited = (ix, iy) => {
+    ix = Math.trunc(ix);
+    iy = Math.trunc(iy);
+    if (ix < 0 || ix >= gridMap.width || iy < 0 || iy >= gridMap.height) {
+      return;
+    }
+    const prev = gridMap.data[iy][ix];
+    if (prev >= 1.0) return;
+    if (prev < 0.5) {
+      gridMap.data[iy][ix] = 0.5;
+      visitedCount += 1;
+    }
+  };
+  markVisited(cX, cY);
 
   const px = [];
   const py = [];
@@ -391,10 +414,253 @@ function sweepPathSearch(sweepSearcher, gridMap) {
     const [wx, wy] = gridMap.indexToWorld(cX, cY);
     px.push(wx);
     py.push(wy);
-    gridMap.setValue(cX, cY, 0.5);
+    markVisited(cX, cY);
   }
 
-  return [px, py];
+  return { px, py, visitedCount };
+}
+
+function buildRowSegments(gridMap) {
+  const rows = Array.from({ length: gridMap.height }, () => []);
+  for (let iy = 0; iy < gridMap.height; iy++) {
+    let ix = 0;
+    while (ix < gridMap.width) {
+      if (gridMap.data[iy][ix] < 1.0) {
+        const start = ix;
+        while (ix + 1 < gridMap.width && gridMap.data[iy][ix + 1] < 1.0) {
+          ix += 1;
+        }
+        rows[iy].push({ x0: start, x1: ix });
+      }
+      ix += 1;
+    }
+  }
+  return rows;
+}
+
+function compressGridPath(path) {
+  if (path.length <= 2) return path.slice();
+  const out = [path[0]];
+  for (let i = 1; i < path.length - 1; i++) {
+    const [px, py] = path[i - 1];
+    const [cx, cy] = path[i];
+    const [nx, ny] = path[i + 1];
+    const dx1 = cx - px;
+    const dy1 = cy - py;
+    const dx2 = nx - cx;
+    const dy2 = ny - cy;
+    if (dx1 !== dx2 || dy1 !== dy2) {
+      out.push([cx, cy]);
+    }
+  }
+  out.push(path[path.length - 1]);
+  return out;
+}
+
+function createGridPathfinder(gridMap) {
+  const width = gridMap.width;
+  const height = gridMap.height;
+  const size = width * height;
+  const visitStamp = new Int32Array(size);
+  const gScore = new Int32Array(size);
+  const cameFrom = new Int32Array(size);
+  let stamp = 1;
+
+  const heap = {
+    idx: [],
+    f: [],
+  };
+
+  const heapPush = (idx, f) => {
+    heap.idx.push(idx);
+    heap.f.push(f);
+    let i = heap.idx.length - 1;
+    while (i > 0) {
+      const parent = Math.floor((i - 1) / 2);
+      if (heap.f[parent] <= heap.f[i]) break;
+      [heap.f[parent], heap.f[i]] = [heap.f[i], heap.f[parent]];
+      [heap.idx[parent], heap.idx[i]] = [heap.idx[i], heap.idx[parent]];
+      i = parent;
+    }
+  };
+
+  const heapPop = () => {
+    if (!heap.idx.length) return null;
+    const idx = heap.idx[0];
+    const f = heap.f[0];
+    const lastIdx = heap.idx.pop();
+    const lastF = heap.f.pop();
+    if (heap.idx.length) {
+      heap.idx[0] = lastIdx;
+      heap.f[0] = lastF;
+      let i = 0;
+      while (true) {
+        const left = i * 2 + 1;
+        const right = i * 2 + 2;
+        let smallest = i;
+        if (left < heap.f.length && heap.f[left] < heap.f[smallest]) {
+          smallest = left;
+        }
+        if (right < heap.f.length && heap.f[right] < heap.f[smallest]) {
+          smallest = right;
+        }
+        if (smallest === i) break;
+        [heap.f[i], heap.f[smallest]] = [heap.f[smallest], heap.f[i]];
+        [heap.idx[i], heap.idx[smallest]] = [heap.idx[smallest], heap.idx[i]];
+        i = smallest;
+      }
+    }
+    return { idx, f };
+  };
+
+  const isFree = (ix, iy) =>
+    ix >= 0 &&
+    ix < width &&
+    iy >= 0 &&
+    iy < height &&
+    gridMap.data[iy][ix] < 1.0;
+
+  const findPath = (start, goal) => {
+    if (!start || !goal) return [];
+    const [sx, sy] = start;
+    const [gx, gy] = goal;
+    if (sx === gx && sy === gy) return [start];
+    if (!isFree(sx, sy) || !isFree(gx, gy)) {
+      return [start, goal];
+    }
+
+    stamp += 1;
+    if (stamp >= 0x7fffffff) {
+      visitStamp.fill(0);
+      stamp = 1;
+    }
+
+    heap.idx.length = 0;
+    heap.f.length = 0;
+    const startIdx = sy * width + sx;
+    const goalIdx = gy * width + gx;
+    const hStart = Math.abs(gx - sx) + Math.abs(gy - sy);
+    gScore[startIdx] = 0;
+    visitStamp[startIdx] = stamp;
+    cameFrom[startIdx] = -1;
+    heapPush(startIdx, hStart);
+
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    while (heap.idx.length) {
+      const node = heapPop();
+      if (!node) break;
+      const idx = node.idx;
+      const x = idx % width;
+      const y = Math.floor(idx / width);
+      if (idx === goalIdx) break;
+
+      const currentG = visitStamp[idx] === stamp ? gScore[idx] : 0;
+      const expectedF = currentG + Math.abs(gx - x) + Math.abs(gy - y);
+      if (expectedF !== node.f) {
+        continue;
+      }
+
+      for (let i = 0; i < dirs.length; i++) {
+        const nx = x + dirs[i][0];
+        const ny = y + dirs[i][1];
+        if (!isFree(nx, ny)) continue;
+        const nIdx = ny * width + nx;
+        const tentativeG = currentG + 1;
+        if (visitStamp[nIdx] !== stamp || tentativeG < gScore[nIdx]) {
+          gScore[nIdx] = tentativeG;
+          visitStamp[nIdx] = stamp;
+          cameFrom[nIdx] = idx;
+          const f = tentativeG + Math.abs(gx - nx) + Math.abs(gy - ny);
+          heapPush(nIdx, f);
+        }
+      }
+    }
+
+    if (visitStamp[goalIdx] !== stamp) {
+      return [start, goal];
+    }
+
+    const path = [];
+    let cur = goalIdx;
+    while (cur !== -1) {
+      path.push([cur % width, Math.floor(cur / width)]);
+      cur = cameFrom[cur];
+    }
+    path.reverse();
+    return compressGridPath(path);
+  };
+
+  return { findPath };
+}
+
+function buildRowSweepPath(gridMap, movingDirection, sweepDirection) {
+  const segmentsByRow = buildRowSegments(gridMap);
+  const pathfinder = createGridPathfinder(gridMap);
+  const indices = [];
+  let last = null;
+  let dir = movingDirection;
+
+  const pushIndex = (ix, iy) => {
+    if (!indices.length) {
+      indices.push([ix, iy]);
+      return;
+    }
+    const prev = indices[indices.length - 1];
+    if (prev[0] === ix && prev[1] === iy) return;
+    indices.push([ix, iy]);
+  };
+
+  const appendPath = (path, skipFirst) => {
+    if (!path || !path.length) return;
+    for (let i = skipFirst ? 1 : 0; i < path.length; i++) {
+      pushIndex(path[i][0], path[i][1]);
+    }
+  };
+
+  const rowStart = sweepDirection === SweepDirection.UP ? 0 : gridMap.height - 1;
+  const rowEnd = sweepDirection === SweepDirection.UP ? gridMap.height : -1;
+  const rowStep = sweepDirection === SweepDirection.UP ? 1 : -1;
+
+  for (let iy = rowStart; iy !== rowEnd; iy += rowStep) {
+    const segs = segmentsByRow[iy];
+    if (!segs || !segs.length) continue;
+    const ordered = segs.slice().sort((a, b) =>
+      dir === MovingDirection.RIGHT ? a.x0 - b.x0 : b.x1 - a.x1
+    );
+
+    for (let s = 0; s < ordered.length; s++) {
+      const seg = ordered[s];
+      const start = dir === MovingDirection.RIGHT ? [seg.x0, iy] : [seg.x1, iy];
+      const end = dir === MovingDirection.RIGHT ? [seg.x1, iy] : [seg.x0, iy];
+
+      if (last) {
+        const connector = pathfinder.findPath(last, start);
+        appendPath(connector, true);
+      } else {
+        pushIndex(start[0], start[1]);
+      }
+
+      pushIndex(end[0], end[1]);
+      last = end;
+    }
+    dir *= -1;
+  }
+
+  const px = [];
+  const py = [];
+  indices.forEach(([ix, iy]) => {
+    const [wx, wy] = gridMap.indexToWorld(ix, iy);
+    px.push(wx);
+    py.push(wy);
+  });
+
+  return { px, py, visitedCount: gridMap.freeCount };
 }
 
 function planning(
@@ -413,8 +679,24 @@ function planning(
   const [rox, roy] = convertGridCoordinate(ox, oy, sweepVec, sweepStart);
   const { gridMap, xGoal, goalY } = setupGridMap(rox, roy, spacingMeters, sweepDirection);
   const sweeper = new SweepSearcher(movingDirection, sweepDirection, xGoal, goalY);
-  let [px, py] = sweepPathSearch(sweeper, gridMap);
-  [px, py] = snapTurningPointsToBorder(px, py, rox, roy, spacingMeters);
+  const sweepRes = sweepPathSearch(sweeper, gridMap);
+  let px = sweepRes.px;
+  let py = sweepRes.py;
+  const needsFallback =
+    Number.isFinite(gridMap.freeCount) &&
+    gridMap.freeCount > 0 &&
+    sweepRes.visitedCount < gridMap.freeCount;
+  if (needsFallback) {
+    const fallback = buildRowSweepPath(
+      gridMap,
+      movingDirection,
+      sweepDirection
+    );
+    px = fallback.px;
+    py = fallback.py;
+  } else {
+    [px, py] = snapTurningPointsToBorder(px, py, rox, roy, spacingMeters);
+  }
   let [rx, ry] = convertGlobalCoordinate(px, py, sweepVec, sweepStart);
   const tol = Number.isFinite(spacingMeters)
     ? Math.max(1e-6, spacingMeters * 1e-6)
