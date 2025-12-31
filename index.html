@@ -335,6 +335,24 @@
               </button>
             </div>
           </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Terrain correction</div>
+            <div class="settingsRow">
+              <label>
+                <input id="TerrainCorrectionToggle" type="checkbox" />
+                Enable altitude correction
+              </label>
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="TerrainTargetInput">Target AGL (m)</label>
+              <input id="TerrainTargetInput" type="number" min="0" step="1" value="50" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="TerrainMaxAltInput">Max altitude (m)</label>
+              <input id="TerrainMaxAltInput" type="number" min="0" step="1" placeholder="-" />
+            </div>
+          </div>
         </div>
       </div>
       <div class="exportPanel">
@@ -378,6 +396,7 @@
                 class="hiddenInput"
               />
             </div>
+            <div class="settingsHint">Or simply drag and drop your KMZ/KML/CSV map file to start the work.</div>
           </div>
         </div>
       </div>
@@ -518,14 +537,15 @@
     <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-    <script src="js/app-state.js?v=4"></script>
-    <script src="js/helpers.js?v=2"></script>
+    <script src="js/app-state.js?v=5"></script>
+    <script src="js/helpers.js?v=3"></script>
+    <script src="js/terrain.js?v=1"></script>
     <script src="js/ellipse-tools.js?v=2"></script>
     <script src="js/algorithms.js?v=2"></script>
     <script src="js/waypoints.js?v=4"></script>
     <script src="js/export.js?v=4"></script>
     <script src="js/ui.js?v=4"></script>
-    <script src="js/history.js?v=3"></script>
-    <script src="js/main.js?v=4"></script>
+    <script src="js/history.js?v=4"></script>
+    <script src="js/main.js?v=5"></script>
   </body>
 </html>

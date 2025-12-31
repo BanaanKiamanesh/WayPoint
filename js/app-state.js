@@ -246,6 +246,9 @@ const OffsetDistanceInput = document.getElementById("OffsetDistanceInput");
 const OffsetBearingInput = document.getElementById("OffsetBearingInput");
 const ApplyOffsetBtn = document.getElementById("ApplyOffsetBtn");
 const ReverseWaypointsBtn = document.getElementById("ReverseWaypointsBtn");
+const TerrainCorrectionToggle = document.getElementById("TerrainCorrectionToggle");
+const TerrainTargetInput = document.getElementById("TerrainTargetInput");
+const TerrainMaxAltInput = document.getElementById("TerrainMaxAltInput");
 const ConfirmShapeBtn = document.getElementById("ConfirmShapeBtn");
 const LeftControlsWrap = document.getElementById("LeftControls");
 const ToggleWaypointsBtn = document.getElementById("ToggleWaypointsBtn");
@@ -310,6 +313,9 @@ const SettingsState = {
   globalAlt: DEFAULT_ALT,
   globalSpeed: DEFAULT_SPEED,
   showAltitudeLabels: true,
+  terrainCorrectionEnabled: false,
+  terrainTargetAgl: DEFAULT_ALT,
+  terrainMaxAlt: null,
 };
 const METERS_PER_FOOT = 0.3048;
 const ELLIPSE_STYLE = {

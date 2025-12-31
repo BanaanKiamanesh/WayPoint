@@ -83,6 +83,18 @@ function ApplySnapshot(State) {
     State.settings && typeof State.settings.showAltitudeLabels === "boolean"
       ? State.settings.showAltitudeLabels
       : true;
+  SettingsState.terrainCorrectionEnabled =
+    State.settings && typeof State.settings.terrainCorrectionEnabled === "boolean"
+      ? State.settings.terrainCorrectionEnabled
+      : false;
+  SettingsState.terrainTargetAgl =
+    State.settings && Number.isFinite(State.settings.terrainTargetAgl)
+      ? State.settings.terrainTargetAgl
+      : DEFAULT_ALT;
+  SettingsState.terrainMaxAlt =
+    State.settings && Number.isFinite(State.settings.terrainMaxAlt)
+      ? State.settings.terrainMaxAlt
+      : null;
 
   if (UnitRadios && UnitRadios.length) {
     UnitRadios.forEach((El) => {
@@ -93,6 +105,19 @@ function ApplySnapshot(State) {
   if (GlobalSpeedInput) GlobalSpeedInput.value = SettingsState.globalSpeed;
   if (ShowAltLabelsToggle) {
     ShowAltLabelsToggle.checked = SettingsState.showAltitudeLabels;
+  }
+  if (TerrainCorrectionToggle) {
+    TerrainCorrectionToggle.checked = SettingsState.terrainCorrectionEnabled;
+  }
+  if (TerrainTargetInput) {
+    TerrainTargetInput.value = Number.isFinite(SettingsState.terrainTargetAgl)
+      ? String(SettingsState.terrainTargetAgl)
+      : "";
+  }
+  if (TerrainMaxAltInput) {
+    TerrainMaxAltInput.value = Number.isFinite(SettingsState.terrainMaxAlt)
+      ? String(SettingsState.terrainMaxAlt)
+      : "";
   }
 
   if (ShapeSpacingInput && State.shapeSpacingValue !== null) {
@@ -218,6 +243,14 @@ function PushHistory() {
   if (HistoryState.stack.length > MAX_HISTORY) {
     HistoryState.stack.shift();
     HistoryState.index -= 1;
+  }
+
+  if (
+    SettingsState.terrainCorrectionEnabled &&
+    typeof RequestTerrainCorrection === "function" &&
+    !(typeof TerrainCorrectionState !== "undefined" && TerrainCorrectionState.suppressHistory)
+  ) {
+    RequestTerrainCorrection();
   }
 }
 

@@ -176,4 +176,12 @@ function UpdateDistanceLabels() {
   if (OffsetDistanceLabel) {
     OffsetDistanceLabel.textContent = "Distance (" + UnitLabel + ")";
   }
+  const TerrainTargetLabel = document.querySelector('label[for="TerrainTargetInput"]');
+  if (TerrainTargetLabel) {
+    TerrainTargetLabel.textContent = "Target AGL (" + UnitLabel + ")";
+  }
+  const TerrainMaxAltLabel = document.querySelector('label[for="TerrainMaxAltInput"]');
+  if (TerrainMaxAltLabel) {
+    TerrainMaxAltLabel.textContent = "Max altitude (" + UnitLabel + ")";
+  }
 }

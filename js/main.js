@@ -141,13 +141,27 @@ function CancelActiveDrawing() {
 
 function IsFileDrag(Ev) {
   if (!Ev || !Ev.dataTransfer) return false;
-  const Items = Ev.dataTransfer.items;
+  const Transfer = Ev.dataTransfer;
+  const Types = Transfer.types;
+  if (Types && Types.length) {
+    for (let i = 0; i < Types.length; i++) {
+      const Type = Types[i];
+      if (
+        Type === "Files" ||
+        Type === "application/x-moz-file" ||
+        Type === "public.file-url"
+      ) {
+        return true;
+      }
+    }
+  }
+  const Items = Transfer.items;
   if (Items && Items.length) {
     for (let i = 0; i < Items.length; i++) {
       if (Items[i].kind === "file") return true;
     }
   }
-  return Ev.dataTransfer.files && Ev.dataTransfer.files.length > 0;
+  return Transfer.files && Transfer.files.length > 0;
 }
 
 let FileDragActive = false;
@@ -810,6 +824,9 @@ if (UnitRadios && UnitRadios.length) {
         UpdateToolsUi();
         RenderWaypointList();
         RefreshMarkers();
+        if (SettingsState.terrainCorrectionEnabled && typeof RequestTerrainCorrection === "function") {
+          RequestTerrainCorrection();
+        }
         PushHistory();
       }
     });
@@ -879,6 +896,18 @@ function ApplyUnitConversion(prevUnits, nextUnits) {
       OffsetDistanceInput.value = String(distVal(offsetVal));
     }
   }
+  if (TerrainTargetInput) {
+    const targetVal = parseFloat(TerrainTargetInput.value);
+    if (Number.isFinite(targetVal)) {
+      TerrainTargetInput.value = String(distVal(targetVal));
+    }
+  }
+  if (TerrainMaxAltInput) {
+    const maxAltVal = parseFloat(TerrainMaxAltInput.value);
+    if (Number.isFinite(maxAltVal)) {
+      TerrainMaxAltInput.value = String(distVal(maxAltVal));
+    }
+  }
 
   Waypoints.forEach((Wp) => {
     if (Number.isFinite(Wp.Alt)) {
@@ -897,6 +926,13 @@ function ApplyUnitConversion(prevUnits, nextUnits) {
       Wp.Speed = SettingsState.globalSpeed;
     }
   });
+
+  if (Number.isFinite(SettingsState.terrainTargetAgl)) {
+    SettingsState.terrainTargetAgl = distVal(SettingsState.terrainTargetAgl);
+  }
+  if (Number.isFinite(SettingsState.terrainMaxAlt)) {
+    SettingsState.terrainMaxAlt = distVal(SettingsState.terrainMaxAlt);
+  }
 }
 
 // Settings: global altitude/speed
@@ -940,6 +976,56 @@ if (ShowAltLabelsToggle) {
   ShowAltLabelsToggle.addEventListener("change", (Ev) => {
     SettingsState.showAltitudeLabels = Boolean(Ev.target.checked);
     RefreshMarkers();
+    PushHistory();
+  });
+}
+
+if (TerrainCorrectionToggle) {
+  TerrainCorrectionToggle.checked = SettingsState.terrainCorrectionEnabled;
+  TerrainCorrectionToggle.addEventListener("change", (Ev) => {
+    SettingsState.terrainCorrectionEnabled = Boolean(Ev.target.checked);
+    if (SettingsState.terrainCorrectionEnabled && typeof RequestTerrainCorrection === "function") {
+      RequestTerrainCorrection();
+    }
+    PushHistory();
+  });
+}
+if (TerrainTargetInput) {
+  TerrainTargetInput.value = Number.isFinite(SettingsState.terrainTargetAgl)
+    ? String(SettingsState.terrainTargetAgl)
+    : "";
+  TerrainTargetInput.addEventListener("change", (Ev) => {
+    const val = parseFloat(Ev.target.value);
+    if (Number.isFinite(val)) {
+      SettingsState.terrainTargetAgl = val;
+    } else {
+      SettingsState.terrainTargetAgl = DEFAULT_ALT;
+      TerrainTargetInput.value = String(DEFAULT_ALT);
+    }
+    if (SettingsState.terrainCorrectionEnabled && typeof RequestTerrainCorrection === "function") {
+      RequestTerrainCorrection();
+    }
+    PushHistory();
+  });
+}
+if (TerrainMaxAltInput) {
+  TerrainMaxAltInput.value = Number.isFinite(SettingsState.terrainMaxAlt)
+    ? String(SettingsState.terrainMaxAlt)
+    : "";
+  TerrainMaxAltInput.addEventListener("change", (Ev) => {
+    const raw = String(Ev.target.value || "").trim();
+    const val = raw === "" ? null : parseFloat(raw);
+    if (raw === "") {
+      SettingsState.terrainMaxAlt = null;
+    } else if (Number.isFinite(val)) {
+      SettingsState.terrainMaxAlt = val;
+    } else {
+      SettingsState.terrainMaxAlt = null;
+      TerrainMaxAltInput.value = "";
+    }
+    if (SettingsState.terrainCorrectionEnabled && typeof RequestTerrainCorrection === "function") {
+      RequestTerrainCorrection();
+    }
     PushHistory();
   });
 }
