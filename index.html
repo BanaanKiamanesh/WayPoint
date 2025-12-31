@@ -178,6 +178,14 @@
                   <option value="north-south">North-South</option>
                 </select>
               </div>
+              <div class="settingsRow inlineRow">
+                <label class="settingsLabel" for="ShapeGimbalInput">Gimbal pitch (deg)</label>
+                <input id="ShapeGimbalInput" type="number" min="-90" max="90" step="1" placeholder="-" />
+              </div>
+              <div class="settingsRow inlineRow">
+                <label class="settingsLabel" for="ShapeGimbalRollInput">Gimbal roll (deg)</label>
+                <input id="ShapeGimbalRollInput" type="number" min="-90" max="90" step="1" placeholder="-" />
+              </div>
               <div class="settingsRow buttonRow">
                 <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
                 <button id="ConfirmShapeBtn" type="button" class="toolButton secondary">Confirm</button>
@@ -552,15 +560,15 @@
     <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-      <script src="js/app-state.js?v=6"></script>
+      <script src="js/app-state.js?v=7"></script>
       <script src="js/helpers.js?v=4"></script>
       <script src="js/terrain.js?v=1"></script>
     <script src="js/ellipse-tools.js?v=2"></script>
     <script src="js/algorithms.js?v=2"></script>
     <script src="js/waypoints.js?v=4"></script>
       <script src="js/export.js?v=5"></script>
-      <script src="js/ui.js?v=4"></script>
-      <script src="js/history.js?v=5"></script>
-      <script src="js/main.js?v=6"></script>
+      <script src="js/ui.js?v=5"></script>
+      <script src="js/history.js?v=6"></script>
+      <script src="js/main.js?v=7"></script>
   </body>
 </html>

@@ -188,6 +188,23 @@ function getSelectValue(InputEl) {
   return raw ? raw : null;
 }
 
+function getShapeGimbalValues() {
+  return {
+    pitch: getNumericInputValue(ShapeGimbalInput),
+    roll: getNumericInputValue(ShapeGimbalRollInput),
+  };
+}
+
+function ApplyShapeGimbalToWaypoints(waypoints) {
+  if (!waypoints || !waypoints.length) return;
+  const { pitch, roll } = getShapeGimbalValues();
+  if (pitch === null && roll === null) return;
+  waypoints.forEach((wp) => {
+    if (pitch !== null) wp.Gimbal = pitch;
+    if (roll !== null) wp.GimbalRoll = roll;
+  });
+}
+
 function ApplyPathHeadingsFromLatLngs(latLngs, waypoints) {
   if (
     typeof bearingBetweenPoints !== "function" ||
@@ -444,6 +461,7 @@ function applyCoverageModelAtLevel(model, boundaryFeature, levelVal) {
     });
     newWaypoints.push(wp);
   });
+  ApplyShapeGimbalToWaypoints(newWaypoints);
   ApplyPathHeadingsFromLatLngs(Res.latLngs, newWaypoints);
 
   if (ShapeResolutionSlider) {
@@ -475,6 +493,7 @@ function GenerateWaypointsFromDrawnShape() {
       });
       newWaypoints.push(wp);
     });
+    ApplyShapeGimbalToWaypoints(newWaypoints);
     ApplyPathHeadingsFromLatLngs(latLngs, newWaypoints);
     LastCoverageModel = null;
     LastBoundaryFeature = ShapeFeature;
@@ -506,6 +525,7 @@ function GenerateWaypointsFromDrawnShape() {
       wp.UseGlobalSpeed = true;
       newWaypoints.push(wp);
     });
+    ApplyShapeGimbalToWaypoints(newWaypoints);
     ApplyPathHeadingsFromLatLngs(latLngs, newWaypoints);
     RenderAll();
     PushHistory();

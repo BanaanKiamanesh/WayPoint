@@ -40,6 +40,8 @@ function SnapshotState() {
     lastBoundaryFeature: CloneJson(LastBoundaryFeature),
     lastCoverageModel: CloneJson(LastCoverageModel),
     shapeSpacingValue: ShapeSpacingInput ? ShapeSpacingInput.value : null,
+    shapeGimbalValue: ShapeGimbalInput ? ShapeGimbalInput.value : null,
+    shapeGimbalRollValue: ShapeGimbalRollInput ? ShapeGimbalRollInput.value : null,
     shapeResolution: ShapeResolutionSlider
       ? {
           min: ShapeResolutionSlider.min,
@@ -129,6 +131,12 @@ function ApplySnapshot(State) {
 
   if (ShapeSpacingInput && State.shapeSpacingValue !== null) {
     ShapeSpacingInput.value = State.shapeSpacingValue;
+  }
+  if (ShapeGimbalInput && State.shapeGimbalValue !== null) {
+    ShapeGimbalInput.value = State.shapeGimbalValue;
+  }
+  if (ShapeGimbalRollInput && State.shapeGimbalRollValue !== null) {
+    ShapeGimbalRollInput.value = State.shapeGimbalRollValue;
   }
   if (ShapeResolutionSlider && State.shapeResolution) {
     ShapeResolutionSlider.min = State.shapeResolution.min;

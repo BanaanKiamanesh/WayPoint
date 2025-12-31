@@ -486,6 +486,18 @@ if (ShapeOrientationSelect) {
   });
 }
 
+if (ShapeGimbalInput) {
+  ShapeGimbalInput.addEventListener("change", () => {
+    PushHistory();
+  });
+}
+
+if (ShapeGimbalRollInput) {
+  ShapeGimbalRollInput.addEventListener("change", () => {
+    PushHistory();
+  });
+}
+
 if (EllipseResolutionInput) {
   EllipseResolutionInput.addEventListener("change", () => {
     if (EllipseMode === "circumference") {
