@@ -42,6 +42,10 @@ function SnapshotState() {
     shapeSpacingValue: ShapeSpacingInput ? ShapeSpacingInput.value : null,
     shapeGimbalValue: ShapeGimbalInput ? ShapeGimbalInput.value : null,
     shapeGimbalRollValue: ShapeGimbalRollInput ? ShapeGimbalRollInput.value : null,
+    shapeOverlapEnabled: ShapeOverlapToggle ? ShapeOverlapToggle.checked : false,
+    shapeOverlapValue: ShapeOverlapInput ? ShapeOverlapInput.value : null,
+    shapePhotoIntervalValue: ShapePhotoIntervalInput ? ShapePhotoIntervalInput.value : null,
+    shapePhotoSpeedValue: ShapePhotoSpeedInput ? ShapePhotoSpeedInput.value : null,
     shapeResolution: ShapeResolutionSlider
       ? {
           min: ShapeResolutionSlider.min,
@@ -137,6 +141,18 @@ function ApplySnapshot(State) {
   }
   if (ShapeGimbalRollInput && State.shapeGimbalRollValue !== null) {
     ShapeGimbalRollInput.value = State.shapeGimbalRollValue;
+  }
+  if (ShapeOverlapToggle) {
+    ShapeOverlapToggle.checked = Boolean(State.shapeOverlapEnabled);
+  }
+  if (ShapeOverlapInput && State.shapeOverlapValue !== null) {
+    ShapeOverlapInput.value = State.shapeOverlapValue;
+  }
+  if (ShapePhotoIntervalInput && State.shapePhotoIntervalValue !== null) {
+    ShapePhotoIntervalInput.value = State.shapePhotoIntervalValue;
+  }
+  if (ShapePhotoSpeedInput && State.shapePhotoSpeedValue !== null) {
+    ShapePhotoSpeedInput.value = State.shapePhotoSpeedValue;
   }
   if (ShapeResolutionSlider && State.shapeResolution) {
     ShapeResolutionSlider.min = State.shapeResolution.min;

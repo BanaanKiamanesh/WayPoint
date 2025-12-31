@@ -186,6 +186,31 @@
                 <label class="settingsLabel" for="ShapeGimbalRollInput">Gimbal roll (deg)</label>
                 <input id="ShapeGimbalRollInput" type="number" min="-90" max="90" step="1" placeholder="-" />
               </div>
+              <div id="ShapeOverlapSection" class="toolSection">
+                <div class="settingsDivider"></div>
+                <div class="toolTitle">Image overlap</div>
+                <div class="settingsHint">
+                  Sets auto spacing and photo actions for polygon/ellipse generation.
+                </div>
+                <div class="settingsRow">
+                  <label>
+                    <input id="ShapeOverlapToggle" type="checkbox" />
+                    Enable image overlap
+                  </label>
+                </div>
+                <div class="settingsRow inlineRow">
+                  <label class="settingsLabel" for="ShapeOverlapInput">Overlap (%)</label>
+                  <input id="ShapeOverlapInput" type="number" min="0" max="95" step="1" value="80" />
+                </div>
+                <div class="settingsRow inlineRow">
+                  <label class="settingsLabel" for="ShapePhotoIntervalInput">Seconds per photo</label>
+                  <input id="ShapePhotoIntervalInput" type="number" min="0.2" step="0.1" value="3" />
+                </div>
+                <div class="settingsRow inlineRow">
+                  <label class="settingsLabel" for="ShapePhotoSpeedInput">Speed (m/s)</label>
+                  <input id="ShapePhotoSpeedInput" type="number" min="0.1" step="0.1" value="8" />
+                </div>
+              </div>
               <div class="settingsRow buttonRow">
                 <button id="GenerateFromShapeBtn" type="button" class="toolButton">Generate</button>
                 <button id="ConfirmShapeBtn" type="button" class="toolButton secondary">Confirm</button>
@@ -560,15 +585,15 @@
     <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-      <script src="js/app-state.js?v=7"></script>
-      <script src="js/helpers.js?v=4"></script>
+      <script src="js/app-state.js?v=8"></script>
+      <script src="js/helpers.js?v=5"></script>
       <script src="js/terrain.js?v=1"></script>
     <script src="js/ellipse-tools.js?v=2"></script>
     <script src="js/algorithms.js?v=2"></script>
     <script src="js/waypoints.js?v=4"></script>
       <script src="js/export.js?v=5"></script>
-      <script src="js/ui.js?v=5"></script>
-      <script src="js/history.js?v=6"></script>
-      <script src="js/main.js?v=7"></script>
+      <script src="js/ui.js?v=6"></script>
+      <script src="js/history.js?v=7"></script>
+      <script src="js/main.js?v=8"></script>
   </body>
 </html>

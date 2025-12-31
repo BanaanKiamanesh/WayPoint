@@ -498,6 +498,36 @@ if (ShapeGimbalRollInput) {
   });
 }
 
+function HandleShapeOverlapChange() {
+  UpdateToolsUi();
+  if (!ShapeOverlapToggle || !ShapeOverlapToggle.checked) {
+    PushHistory();
+    return;
+  }
+  if (!HasBoundaryShape() || BoundaryConfirmed) {
+    PushHistory();
+    return;
+  }
+  if (ActiveDrawTool !== "polygon" && ActiveDrawTool !== "ellipse") {
+    PushHistory();
+    return;
+  }
+  GenerateWaypointsFromDrawnShape();
+}
+
+if (ShapeOverlapToggle) {
+  ShapeOverlapToggle.addEventListener("change", HandleShapeOverlapChange);
+}
+if (ShapeOverlapInput) {
+  ShapeOverlapInput.addEventListener("change", HandleShapeOverlapChange);
+}
+if (ShapePhotoIntervalInput) {
+  ShapePhotoIntervalInput.addEventListener("change", HandleShapeOverlapChange);
+}
+if (ShapePhotoSpeedInput) {
+  ShapePhotoSpeedInput.addEventListener("change", HandleShapeOverlapChange);
+}
+
 if (EllipseResolutionInput) {
   EllipseResolutionInput.addEventListener("change", () => {
     if (EllipseMode === "circumference") {
@@ -894,6 +924,12 @@ function ApplyUnitConversion(prevUnits, nextUnits) {
     const batchSpeedVal = parseFloat(BatchSpeedInput.value);
     if (Number.isFinite(batchSpeedVal)) {
       BatchSpeedInput.value = String(speedVal(batchSpeedVal));
+    }
+  }
+  if (ShapePhotoSpeedInput) {
+    const shapeSpeedVal = parseFloat(ShapePhotoSpeedInput.value);
+    if (Number.isFinite(shapeSpeedVal)) {
+      ShapePhotoSpeedInput.value = String(speedVal(shapeSpeedVal));
     }
   }
   if (NudgeStepInput) {

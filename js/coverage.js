@@ -694,9 +694,8 @@ function planning(
     );
     px = fallback.px;
     py = fallback.py;
-  } else {
-    [px, py] = snapTurningPointsToBorder(px, py, rox, roy, spacingMeters);
   }
+  [px, py] = snapTurningPointsToBorder(px, py, rox, roy, spacingMeters);
   let [rx, ry] = convertGlobalCoordinate(px, py, sweepVec, sweepStart);
   const tol = Number.isFinite(spacingMeters)
     ? Math.max(1e-6, spacingMeters * 1e-6)
@@ -730,6 +729,65 @@ function extractTurningIndices(rx, ry, angleTolDeg = 1.0) {
   }
   turnInds.push(n - 1);
   return Array.from(new Set(turnInds)).sort((a, b) => a - b);
+}
+
+function buildTurnDistanceArray(rx, ry, angleTolDeg) {
+  if (!rx || !ry || rx.length < 2 || ry.length < 2) return [];
+  const dx = [];
+  const dy = [];
+  for (let i = 0; i < rx.length - 1; i++) {
+    dx.push(rx[i + 1] - rx[i]);
+    dy.push(ry[i + 1] - ry[i]);
+  }
+  const segLen = dx.map((v, i) => Math.hypot(v, dy[i]));
+  const cumLen = [0];
+  for (let i = 0; i < segLen.length; i++) {
+    cumLen.push(cumLen[i] + segLen[i]);
+  }
+  const totalLen = cumLen[cumLen.length - 1] || 0;
+  if (!Number.isFinite(totalLen) || totalLen <= 0) return [];
+
+  const turnInds = extractTurningIndices(rx, ry, angleTolDeg);
+  const turnDistArr = turnInds.map((idx) =>
+    cumLen[Math.min(idx, cumLen.length - 1)]
+  );
+  return Array.from(new Set(turnDistArr.concat([0, totalLen]))).sort((a, b) => a - b);
+}
+
+function simplifyCollinear(wx, wy, angleTolDeg) {
+  if (!wx || !wy || wx.length < 3 || wx.length !== wy.length) {
+    return { wx: wx || [], wy: wy || [] };
+  }
+  const tolDeg = Number.isFinite(angleTolDeg) ? angleTolDeg : 5;
+  const cosTol = Math.cos((tolDeg * Math.PI) / 180);
+  const outX = [wx[0]];
+  const outY = [wy[0]];
+  for (let i = 1; i < wx.length - 1; i++) {
+    const ax = outX[outX.length - 1];
+    const ay = outY[outY.length - 1];
+    const bx = wx[i];
+    const by = wy[i];
+    const cx = wx[i + 1];
+    const cy = wy[i + 1];
+    const v1x = bx - ax;
+    const v1y = by - ay;
+    const v2x = cx - bx;
+    const v2y = cy - by;
+    const len1 = Math.hypot(v1x, v1y);
+    const len2 = Math.hypot(v2x, v2y);
+    if (len1 <= 1e-6 || len2 <= 1e-6) {
+      continue;
+    }
+    const dot = (v1x * v2x + v1y * v2y) / (len1 * len2);
+    if (dot >= cosTol) {
+      continue;
+    }
+    outX.push(bx);
+    outY.push(by);
+  }
+  outX.push(wx[wx.length - 1]);
+  outY.push(wy[wy.length - 1]);
+  return { wx: outX, wy: outY };
 }
 
 function samplePolylineAtDistances(rx, ry, distQueryArr) {
@@ -989,16 +1047,26 @@ function generatePhotoWaypointsByResolutionLevel(
   if (!Number.isFinite(spacingInfo.spacing)) {
     return { wx: [], wy: [], levelUsed: spacingInfo.levelUsed, photoSpacingUsed: spacingInfo.spacing, count: 0 };
   }
-  const distArr = buildMidpointDistances(
-    turnDistArr,
-    spacingInfo.spacing,
-    minSpacing
-  );
+  let distArr = null;
+  if (spacingInfo.levelUsed <= 1) {
+    distArr = buildTurnDistanceArray(rx, ry, 30);
+  } else {
+    distArr = buildMidpointDistances(
+      turnDistArr,
+      spacingInfo.spacing,
+      minSpacing
+    );
+  }
   if (!distArr.length) {
     return { wx: [], wy: [], levelUsed: spacingInfo.levelUsed, photoSpacingUsed: spacingInfo.spacing, count: 0 };
   }
 
-  const [wx, wy] = samplePolylineAtDistances(rx, ry, distArr);
+  let [wx, wy] = samplePolylineAtDistances(rx, ry, distArr);
+  if (spacingInfo.levelUsed <= 1) {
+    const simplified = simplifyCollinear(wx, wy, 5);
+    wx = simplified.wx;
+    wy = simplified.wy;
+  }
   return {
     wx,
     wy,

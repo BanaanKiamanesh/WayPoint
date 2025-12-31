@@ -312,18 +312,34 @@ function formatDurationSeconds(sec) {
   return "~" + parts.join(" ");
 }
 
+function getWaypointSpeedMsForEstimate(Wp) {
+  const useGlobal = !Wp || Wp.UseGlobalSpeed;
+  let speedVal = useGlobal ? SettingsState.globalSpeed : Wp.Speed;
+  if (!Number.isFinite(speedVal) || speedVal <= 0) {
+    speedVal = SettingsState.globalSpeed;
+  }
+  if (!Number.isFinite(speedVal) || speedVal <= 0) return null;
+  if (typeof ConvertSpeedBetweenUnits === "function") {
+    return ConvertSpeedBetweenUnits(speedVal, SettingsState.units, "metric");
+  }
+  return SettingsState.units === "imperial" ? speedVal * 0.44704 : speedVal;
+}
+
 function computeTravelTimeSeconds() {
   if (!turf || Waypoints.length < 2) return 0;
-  const totalM = computeTotalDistanceMeters();
-  if (!Number.isFinite(totalM) || totalM <= 0) return 0;
-
-  let speedMs = SettingsState.globalSpeed;
-  if (SettingsState.units === "imperial") {
-    speedMs = speedMs * 0.44704; // mph to m/s
+  let totalSeconds = 0;
+  for (let i = 0; i < Waypoints.length - 1; i++) {
+    const cur = Waypoints[i];
+    const next = Waypoints[i + 1];
+    const speedMs = getWaypointSpeedMsForEstimate(cur);
+    if (!Number.isFinite(speedMs) || speedMs <= 0) continue;
+    const distM =
+      turf.distance([cur.Lon, cur.Lat], [next.Lon, next.Lat], { units: "kilometers" }) *
+      1000;
+    if (!Number.isFinite(distM) || distM <= 0) continue;
+    totalSeconds += distM / speedMs;
   }
-  if (!Number.isFinite(speedMs) || speedMs <= 0) return 0;
-
-  return totalM / speedMs;
+  return totalSeconds;
 }
 
 function computeTotalDistanceMeters() {

@@ -210,4 +210,11 @@ function UpdateDistanceLabels() {
   if (TerrainMaxAltLabel) {
     TerrainMaxAltLabel.textContent = "Max altitude (" + UnitLabel + ")";
   }
+  const ShapePhotoSpeedLabel = document.querySelector(
+    'label[for="ShapePhotoSpeedInput"]'
+  );
+  if (ShapePhotoSpeedLabel) {
+    const speedUnit = SettingsState.units === "imperial" ? "mph" : "m/s";
+    ShapePhotoSpeedLabel.textContent = "Speed (" + speedUnit + ")";
+  }
 }

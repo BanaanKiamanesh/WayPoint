@@ -188,6 +188,82 @@ function getSelectValue(InputEl) {
   return raw ? raw : null;
 }
 
+const IMAGE_OVERLAP_HFOV_DEG = 84;
+const IMAGE_OVERLAP_MAX_PCT = 95;
+
+function isImageOverlapToolActive() {
+  return ActiveDrawTool === "polygon" || ActiveDrawTool === "ellipse";
+}
+
+function clampNumberValue(val, minVal, maxVal) {
+  if (!Number.isFinite(val)) return null;
+  return Math.min(Math.max(val, minVal), maxVal);
+}
+
+function getPhotoIntervalTolerance(intervalSec) {
+  if (!Number.isFinite(intervalSec) || intervalSec <= 0) return 0;
+  const tol = intervalSec * 0.1;
+  return Math.min(0.5, Math.max(0.1, tol));
+}
+
+function getImageOverlapSettings() {
+  const enabled = Boolean(ShapeOverlapToggle && ShapeOverlapToggle.checked);
+  const overlapPctRaw = getNumericInputValue(ShapeOverlapInput);
+  const overlapPct = clampNumberValue(overlapPctRaw, 0, IMAGE_OVERLAP_MAX_PCT);
+  const intervalRaw = getNumericInputValue(ShapePhotoIntervalInput);
+  const intervalSec =
+    intervalRaw !== null && intervalRaw > 0 ? intervalRaw : null;
+  const speedRaw = getNumericInputValue(ShapePhotoSpeedInput);
+  const speedInput = speedRaw !== null && speedRaw > 0 ? speedRaw : null;
+  const speedMs =
+    speedInput === null
+      ? null
+      : ConvertSpeedBetweenUnits(speedInput, SettingsState.units, "metric");
+  const intervalWithTol =
+    intervalSec === null ? null : intervalSec + getPhotoIntervalTolerance(intervalSec);
+  const photoSpacingMeters =
+    speedMs !== null && intervalWithTol !== null ? speedMs * intervalWithTol : null;
+
+  return {
+    enabled,
+    overlapPct,
+    intervalSec,
+    speedInput,
+    speedMs,
+    photoSpacingMeters,
+  };
+}
+
+function getEffectiveAltitudeMeters(altMeters, gimbalPitchDeg) {
+  if (!Number.isFinite(altMeters) || altMeters <= 0) return null;
+  const pitch = Number.isFinite(gimbalPitchDeg) ? gimbalPitchDeg : DEFAULT_GIMBAL;
+  const clampedPitch = clampNumberValue(pitch, -90, 90);
+  const tiltFromNadir = Math.abs(Math.abs(clampedPitch) - 90);
+  const tiltRad = (tiltFromNadir * Math.PI) / 180;
+  const cosTilt = Math.cos(tiltRad);
+  const tiltScale = cosTilt > 0.25 ? 1 / cosTilt : 4;
+  return altMeters * tiltScale;
+}
+
+function getImageOverlapSpacingMeters(overlapPct, gimbalPitchDeg) {
+  if (!Number.isFinite(overlapPct)) return null;
+  const altMeters = ConvertDistanceToMeters(SettingsState.globalAlt);
+  const effectiveAlt = getEffectiveAltitudeMeters(altMeters, gimbalPitchDeg);
+  if (!Number.isFinite(effectiveAlt)) return null;
+  const halfFovRad = (IMAGE_OVERLAP_HFOV_DEG * Math.PI) / 360;
+  const footprintWidth = 2 * effectiveAlt * Math.tan(halfFovRad);
+  const overlapRatio = clampNumberValue(overlapPct / 100, 0, 0.95);
+  if (!Number.isFinite(footprintWidth) || !Number.isFinite(overlapRatio)) return null;
+  const spacing = footprintWidth * (1 - overlapRatio);
+  return Number.isFinite(spacing) ? Math.max(spacing, 1) : null;
+}
+
+function formatDistanceInputValue(meters) {
+  const displayVal = ConvertMetersToDistance(meters);
+  if (!Number.isFinite(displayVal)) return "";
+  return String(RoundNumber(displayVal, 2));
+}
+
 function getShapeGimbalValues() {
   return {
     pitch: getNumericInputValue(ShapeGimbalInput),
@@ -202,6 +278,22 @@ function ApplyShapeGimbalToWaypoints(waypoints) {
   waypoints.forEach((wp) => {
     if (pitch !== null) wp.Gimbal = pitch;
     if (roll !== null) wp.GimbalRoll = roll;
+  });
+}
+
+function ApplyShapePhotoPlanToWaypoints(waypoints, allowOverlap) {
+  if (!waypoints || !waypoints.length) return;
+  const canApply =
+    allowOverlap === undefined ? isImageOverlapToolActive() : allowOverlap;
+  if (!canApply) return;
+  const settings = getImageOverlapSettings();
+  if (!settings.enabled) return;
+  waypoints.forEach((wp) => {
+    wp.CameraAction = "takePhoto";
+    if (Number.isFinite(settings.speedInput)) {
+      wp.Speed = settings.speedInput;
+      wp.UseGlobalSpeed = false;
+    }
   });
 }
 
@@ -462,6 +554,7 @@ function applyCoverageModelAtLevel(model, boundaryFeature, levelVal) {
     newWaypoints.push(wp);
   });
   ApplyShapeGimbalToWaypoints(newWaypoints);
+  ApplyShapePhotoPlanToWaypoints(newWaypoints, true);
   ApplyPathHeadingsFromLatLngs(Res.latLngs, newWaypoints);
 
   if (ShapeResolutionSlider) {
@@ -472,15 +565,32 @@ function applyCoverageModelAtLevel(model, boundaryFeature, levelVal) {
 }
 
 function GenerateWaypointsFromDrawnShape() {
-  const SpacingMeters = GetSpacingMeters();
   const ShapeFeature = GetFirstDrawnFeature();
-  if (!SpacingMeters || !ShapeFeature) return;
+  if (!ShapeFeature) return;
+  const overlapSettings = getImageOverlapSettings();
+  const allowOverlap = isImageOverlapToolActive();
+  const gimbalPitch = getNumericInputValue(ShapeGimbalInput);
+
+  let spacingMeters = GetSpacingMeters();
+  if (allowOverlap && overlapSettings.enabled) {
+    const overlapSpacing = getImageOverlapSpacingMeters(
+      overlapSettings.overlapPct,
+      gimbalPitch
+    );
+    if (Number.isFinite(overlapSpacing)) {
+      spacingMeters = overlapSpacing;
+      if (ShapeSpacingInput) {
+        ShapeSpacingInput.value = formatDistanceInputValue(overlapSpacing);
+      }
+    }
+  }
+  if (!spacingMeters) return;
 
   const GeomType = ShapeFeature.geometry.type;
   if (GeomType === "LineString" || GeomType === "MultiLineString") {
-    const pts = SampleLineFeature(ShapeFeature, SpacingMeters);
+    const pts = SampleLineFeature(ShapeFeature, spacingMeters);
     if (!pts.length) return;
-    const tolerance = Math.max(SpacingMeters * 0.5, 0.1);
+    const tolerance = Math.max(spacingMeters * 0.5, 0.1);
     RemoveWaypointsNearLine(ShapeFeature, tolerance);
     SelectedIds.clear();
     const latLngs = pts.map((p) => [p[1], p[0]]);
@@ -494,6 +604,7 @@ function GenerateWaypointsFromDrawnShape() {
       newWaypoints.push(wp);
     });
     ApplyShapeGimbalToWaypoints(newWaypoints);
+    ApplyShapePhotoPlanToWaypoints(newWaypoints, false);
     ApplyPathHeadingsFromLatLngs(latLngs, newWaypoints);
     LastCoverageModel = null;
     LastBoundaryFeature = ShapeFeature;
@@ -502,12 +613,22 @@ function GenerateWaypointsFromDrawnShape() {
     return;
   }
 
-  const BoundaryFeature = normalizeBoundaryFeature(ShapeFeature, SpacingMeters);
+  const BoundaryFeature = normalizeBoundaryFeature(ShapeFeature, spacingMeters);
   if (!BoundaryFeature) return;
 
   // Ellipse circumference mode: drop waypoints along ellipse edge
   if (EllipseMode === "circumference") {
-    const circSpacing = GetEllipseSpacingMeters();
+    let circSpacing = GetEllipseSpacingMeters();
+    if (
+      allowOverlap &&
+      overlapSettings.enabled &&
+      Number.isFinite(overlapSettings.photoSpacingMeters)
+    ) {
+      circSpacing = overlapSettings.photoSpacingMeters;
+      if (EllipseResolutionInput) {
+        EllipseResolutionInput.value = formatDistanceInputValue(circSpacing);
+      }
+    }
     const rotDeg = parseFloat(EllipseRotationInput ? EllipseRotationInput.value : "0") || 0;
     const pts = ellipseCircumferenceWaypoints(BoundaryFeature, circSpacing, rotDeg);
     if (!pts.length) return;
@@ -526,6 +647,7 @@ function GenerateWaypointsFromDrawnShape() {
       newWaypoints.push(wp);
     });
     ApplyShapeGimbalToWaypoints(newWaypoints);
+    ApplyShapePhotoPlanToWaypoints(newWaypoints, true);
     ApplyPathHeadingsFromLatLngs(latLngs, newWaypoints);
     RenderAll();
     PushHistory();
@@ -538,7 +660,7 @@ function GenerateWaypointsFromDrawnShape() {
     : PolygonOrientation;
   const Model = buildCoverageModelFromFeature(
     BoundaryFeature,
-    SpacingMeters,
+    spacingMeters,
     orientation
   );
   if (!Model) return;
@@ -546,7 +668,21 @@ function GenerateWaypointsFromDrawnShape() {
   LastCoverageModel = Model;
   LastBoundaryFeature = BoundaryFeature;
 
-  const PreferredLevel = GetResolutionLevel() || 1;
+  let PreferredLevel = GetResolutionLevel() || 1;
+  if (
+    allowOverlap &&
+    overlapSettings.enabled &&
+    Number.isFinite(overlapSettings.photoSpacingMeters) &&
+    typeof resolutionLevelFromMeters === "function"
+  ) {
+    PreferredLevel = resolutionLevelFromMeters(
+      overlapSettings.photoSpacingMeters,
+      Model.baseStepVal,
+      Model.maxLevel || 0,
+      Model.maxSpacing,
+      Model.minSpacing
+    );
+  }
   const LevelToUse = syncResolutionSlider(Model, PreferredLevel);
 
   applyCoverageModelAtLevel(Model, BoundaryFeature, LevelToUse);
@@ -615,7 +751,7 @@ function RemoveWaypointsNearLine(LineFeature, ToleranceMeters) {
 
 function UpdateToolsUi() {
   const HasShape = DrawnItems && DrawnItems.getLayers().length > 0;
-  const SpacingValid = GetSpacingMeters() !== null;
+  let SpacingValid = GetSpacingMeters() !== null;
   const ResolutionValid = GetResolutionLevel() !== null;
   const HasSelection = SelectedIds.size > 0;
   const HasRotationSelection = SelectedIds.size >= 2;
@@ -627,6 +763,23 @@ function UpdateToolsUi() {
   const IsEllipseTool = ActiveTool === "ellipse";
   const NeedsResolution = ActiveTool !== "polyline";
   const ShowEllipseOrientation = IsEllipseTool && EllipseMode === "boundary";
+  const ShowOverlapSection = IsPolyTool || IsEllipseTool;
+  const overlapSettings = getImageOverlapSettings();
+  const overlapReady =
+    !ShowOverlapSection ||
+    !overlapSettings.enabled ||
+    (Number.isFinite(overlapSettings.overlapPct) &&
+      Number.isFinite(overlapSettings.intervalSec) &&
+      Number.isFinite(overlapSettings.speedInput));
+  if (!SpacingValid && ShowOverlapSection && overlapSettings.enabled) {
+    const overlapSpacing = getImageOverlapSpacingMeters(
+      overlapSettings.overlapPct,
+      getNumericInputValue(ShapeGimbalInput)
+    );
+    if (Number.isFinite(overlapSpacing)) {
+      SpacingValid = true;
+    }
+  }
   const BoundaryLocked = BoundaryConfirmed;
   const ShowDrawOptions = Boolean(ToolsPanelOpen && ActiveTool);
   const BatchHasValues = [
@@ -682,12 +835,25 @@ function UpdateToolsUi() {
   if (EllipseOrientationRow) {
     EllipseOrientationRow.style.display = ShowEllipseOrientation ? "" : "none";
   }
+  if (ShapeOverlapSection) {
+    ShapeOverlapSection.style.display = ShowOverlapSection ? "" : "none";
+  }
+  const overlapInputsEnabled = Boolean(
+    ShowOverlapSection && ShapeOverlapToggle && ShapeOverlapToggle.checked
+  );
+  [ShapeOverlapInput, ShapePhotoIntervalInput, ShapePhotoSpeedInput].forEach(
+    (InputEl) => {
+      if (!InputEl) return;
+      InputEl.disabled = !overlapInputsEnabled;
+    }
+  );
 
   if (GenerateFromShapeBtn) {
     GenerateFromShapeBtn.disabled =
       !HasShape ||
       !SpacingValid ||
       (NeedsResolution && !ResolutionValid) ||
+      !overlapReady ||
       BoundaryLocked;
   }
   if (ClearShapesBtn) {
