@@ -176,8 +176,4 @@ function UpdateDistanceLabels() {
   if (OffsetDistanceLabel) {
     OffsetDistanceLabel.textContent = "Distance (" + UnitLabel + ")";
   }
-  const LineOffsetLabel = document.querySelector('label[for="LineOffsetInput"]');
-  if (LineOffsetLabel) {
-    LineOffsetLabel.textContent = "Line offset (" + UnitLabel + ")";
-  }
 }

@@ -374,6 +374,7 @@ body {
   cursor: pointer;
   font-weight: 600;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .panelActionBtn:hover:not(:disabled) {
@@ -443,6 +444,18 @@ body {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.drawOptionsPanel .settingsRow.buttonRow {
+  flex-wrap: nowrap;
+}
+
+.drawOptionsPanel .settingsRow.buttonRow .toolButton {
+  flex: 1 1 0;
+  padding: 6px 6px;
+  font-size: 12px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .hiddenInput {
@@ -739,7 +752,22 @@ body {
   outline: none;
 }
 
+.wpField select {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  outline: none;
+}
+
 .wpField input:focus {
+  border-color: rgba(77, 179, 255, 0.8);
+  box-shadow: 0 0 0 3px rgba(77, 179, 255, 0.2);
+}
+
+.wpField select:focus {
   border-color: rgba(77, 179, 255, 0.8);
   box-shadow: 0 0 0 3px rgba(77, 179, 255, 0.2);
 }

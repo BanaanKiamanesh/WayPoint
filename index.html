@@ -18,7 +18,7 @@
     />
 
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css?v=3" />
+    <link rel="stylesheet" href="css/styles.css?v=6" />
   </head>
 
   <body>
@@ -268,6 +268,28 @@
               <label class="settingsLabel" for="BatchGimbalInput">Gimbal (deg)</label>
               <input id="BatchGimbalInput" type="number" min="-90" max="90" step="1" placeholder="-" />
             </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchGimbalRollInput">Gimbal roll (deg)</label>
+              <input id="BatchGimbalRollInput" type="number" min="-90" max="90" step="1" placeholder="-" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchHoverInput">Hover (s)</label>
+              <input id="BatchHoverInput" type="number" min="0" step="1" placeholder="-" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchCameraActionSelect">Camera action</label>
+              <select id="BatchCameraActionSelect">
+                <option value="" selected>No change</option>
+                <option value="none">None</option>
+                <option value="takePhoto">Take photo</option>
+                <option value="startRecording">Start recording</option>
+                <option value="stopRecording">Stop recording</option>
+              </select>
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchZoomInput">Zoom (x)</label>
+              <input id="BatchZoomInput" type="number" min="1" step="0.1" placeholder="-" />
+            </div>
             <div class="settingsRow buttonRow">
               <button id="ApplyBatchEditBtn" type="button" class="toolButton">Apply to selected</button>
               <button id="ClearBatchEditBtn" type="button" class="toolButton secondary">Clear</button>
@@ -303,21 +325,6 @@
               <button id="ApplyOffsetBtn" type="button" class="toolButton">Offset selected</button>
             </div>
             <div class="settingsHint">Bearing: 0 = north, 90 = east.</div>
-          </div>
-          <div class="settingsDivider"></div>
-          <div class="toolSection">
-            <div class="toolTitle">Align selection</div>
-            <div class="settingsRow inlineRow">
-              <label class="settingsLabel" for="LineOffsetInput">Line offset (m)</label>
-              <input id="LineOffsetInput" type="number" step="0.1" value="0" />
-            </div>
-            <div class="settingsRow buttonRow">
-              <button id="AlignToLineBtn" type="button" class="toolButton">Align to drawn line</button>
-              <button id="AlignToPoiBtn" type="button" class="toolButton secondary">
-                Align to POI
-              </button>
-            </div>
-            <div class="settingsHint">POI uses the last search marker.</div>
           </div>
           <div class="settingsDivider"></div>
           <div class="toolSection">
@@ -511,14 +518,14 @@
     <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-    <script src="js/app-state.js?v=3"></script>
+    <script src="js/app-state.js?v=4"></script>
     <script src="js/helpers.js?v=2"></script>
     <script src="js/ellipse-tools.js?v=2"></script>
     <script src="js/algorithms.js?v=2"></script>
-    <script src="js/waypoints.js?v=3"></script>
-    <script src="js/export.js?v=2"></script>
-    <script src="js/ui.js?v=3"></script>
+    <script src="js/waypoints.js?v=4"></script>
+    <script src="js/export.js?v=4"></script>
+    <script src="js/ui.js?v=4"></script>
     <script src="js/history.js?v=3"></script>
-    <script src="js/main.js?v=3"></script>
+    <script src="js/main.js?v=4"></script>
   </body>
 </html>

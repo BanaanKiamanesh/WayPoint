@@ -182,9 +182,10 @@ function getNumericInputValue(InputEl) {
   return Number.isFinite(val) ? val : null;
 }
 
-function convertSignedDistanceToMeters(val) {
-  if (!Number.isFinite(val)) return null;
-  return SettingsState.units === "imperial" ? val * METERS_PER_FOOT : val;
+function getSelectValue(InputEl) {
+  if (!InputEl) return null;
+  const raw = String(InputEl.value || "").trim();
+  return raw ? raw : null;
 }
 
 function ApplyPathHeadingsFromLatLngs(latLngs, waypoints) {
@@ -228,50 +229,26 @@ function GetFirstDrawnFeature() {
   return GeoJson;
 }
 
-function GetAlignLineFeature() {
-  const Feature = GetFirstDrawnFeature();
-  if (!Feature || !Feature.geometry) return null;
-  const geom = Feature.geometry;
-  if (geom.type === "LineString") return Feature;
-  if (geom.type === "MultiLineString" && geom.coordinates && geom.coordinates.length) {
-    return {
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: geom.coordinates[0] },
-      properties: Feature.properties || {},
-    };
-  }
-  if (geom.type === "Polygon" && geom.coordinates && geom.coordinates.length) {
-    return {
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: geom.coordinates[0] },
-      properties: Feature.properties || {},
-    };
-  }
-  if (geom.type === "MultiPolygon" && geom.coordinates && geom.coordinates.length) {
-    const ring = geom.coordinates[0] && geom.coordinates[0][0];
-    if (ring && ring.length) {
-      return {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: ring },
-        properties: Feature.properties || {},
-      };
-    }
-  }
-  return null;
-}
-
 function ApplyBatchEditToSelected() {
   if (!SelectedIds.size) return;
   const altVal = getNumericInputValue(BatchAltInput);
   const speedVal = getNumericInputValue(BatchSpeedInput);
   const headingVal = getNumericInputValue(BatchHeadingInput);
   const gimbalVal = getNumericInputValue(BatchGimbalInput);
+  const gimbalRollVal = getNumericInputValue(BatchGimbalRollInput);
+  const hoverVal = getNumericInputValue(BatchHoverInput);
+  const zoomVal = getNumericInputValue(BatchZoomInput);
+  const cameraActionVal = getSelectValue(BatchCameraActionSelect);
 
   if (
     altVal === null &&
     speedVal === null &&
     headingVal === null &&
-    gimbalVal === null
+    gimbalVal === null &&
+    gimbalRollVal === null &&
+    hoverVal === null &&
+    zoomVal === null &&
+    cameraActionVal === null
   ) {
     return;
   }
@@ -294,6 +271,19 @@ function ApplyBatchEditToSelected() {
       const clamped = Math.max(-90, Math.min(90, gimbalVal));
       Wp.Gimbal = clamped;
     }
+    if (gimbalRollVal !== null) {
+      const clamped = Math.max(-90, Math.min(90, gimbalRollVal));
+      Wp.GimbalRoll = clamped;
+    }
+    if (hoverVal !== null) {
+      Wp.Hover = Math.max(0, hoverVal);
+    }
+    if (zoomVal !== null) {
+      Wp.Zoom = Math.max(1, zoomVal);
+    }
+    if (cameraActionVal !== null) {
+      Wp.CameraAction = cameraActionVal;
+    }
   });
 
   RenderAll();
@@ -305,6 +295,10 @@ function ClearBatchEditInputs() {
   if (BatchSpeedInput) BatchSpeedInput.value = "";
   if (BatchHeadingInput) BatchHeadingInput.value = "";
   if (BatchGimbalInput) BatchGimbalInput.value = "";
+  if (BatchGimbalRollInput) BatchGimbalRollInput.value = "";
+  if (BatchHoverInput) BatchHoverInput.value = "";
+  if (BatchZoomInput) BatchZoomInput.value = "";
+  if (BatchCameraActionSelect) BatchCameraActionSelect.value = "";
   UpdateToolsUi();
 }
 
@@ -329,73 +323,6 @@ function OffsetSelectedWaypointsByBearing(distanceMeters, bearingDeg) {
   NudgeSelectedWaypoints(northMeters, eastMeters);
 }
 
-function AlignSelectedWaypointsToLine(offsetMeters) {
-  if (!SelectedIds.size) return;
-  if (typeof turf === "undefined" || !turf.nearestPointOnLine) return;
-  const lineFeature = GetAlignLineFeature();
-  if (!lineFeature) return;
-
-  let lineToUse = lineFeature;
-  if (Number.isFinite(offsetMeters) && offsetMeters !== 0 && turf.lineOffset) {
-    const offsetKm = offsetMeters / 1000;
-    lineToUse = turf.lineOffset(lineFeature, offsetKm, { units: "kilometers" });
-  }
-
-  if (!lineToUse) return;
-  Waypoints.forEach((Wp) => {
-    if (!SelectedIds.has(Wp.Id)) return;
-    const pt = turf.nearestPointOnLine(
-      lineToUse,
-      [Wp.Lon, Wp.Lat],
-      { units: "kilometers" }
-    );
-    if (pt && pt.geometry && pt.geometry.coordinates) {
-      Wp.Lon = pt.geometry.coordinates[0];
-      Wp.Lat = pt.geometry.coordinates[1];
-    }
-  });
-
-  RenderAll();
-  PushHistory();
-}
-
-function AlignSelectedWaypointsToPoi() {
-  if (!SelectedIds.size || !SearchMarker) return;
-  const target = SearchMarker.getLatLng();
-  if (!target) return;
-
-  const selected = Waypoints.filter((Wp) => SelectedIds.has(Wp.Id));
-  if (!selected.length) return;
-
-  const centerLat =
-    selected.reduce((sum, Wp) => sum + Wp.Lat, 0) / selected.length;
-  const centerLon =
-    selected.reduce((sum, Wp) => sum + Wp.Lon, 0) / selected.length;
-
-  if (typeof turf !== "undefined" && turf.toMercator && turf.toWgs84) {
-    const targetMerc = turf.toMercator([target.lng, target.lat]);
-    const centerMerc = turf.toMercator([centerLon, centerLat]);
-    const dx = targetMerc[0] - centerMerc[0];
-    const dy = targetMerc[1] - centerMerc[1];
-    selected.forEach((Wp) => {
-      const merc = turf.toMercator([Wp.Lon, Wp.Lat]);
-      const wgs = turf.toWgs84([merc[0] + dx, merc[1] + dy]);
-      Wp.Lat = wgs[1];
-      Wp.Lon = wgs[0];
-    });
-  } else {
-    const dLat = target.lat - centerLat;
-    const dLon = target.lng - centerLon;
-    selected.forEach((Wp) => {
-      Wp.Lat += dLat;
-      Wp.Lon += dLon;
-    });
-  }
-
-  RenderAll();
-  PushHistory();
-}
-
 function NudgeSelectionByDirection(direction) {
   const stepVal = getNumericInputValue(NudgeStepInput);
   const stepMeters = ConvertDistanceToMeters(stepVal);
@@ -415,12 +342,6 @@ function ApplyOffsetSelectionFromInputs() {
   if (!Number.isFinite(distMeters) || distMeters <= 0) return;
   const bearingVal = getNumericInputValue(OffsetBearingInput);
   OffsetSelectedWaypointsByBearing(distMeters, bearingVal || 0);
-}
-
-function ApplyAlignToLineFromInputs() {
-  const offsetVal = getNumericInputValue(LineOffsetInput);
-  const offsetMeters = convertSignedDistanceToMeters(offsetVal) || 0;
-  AlignSelectedWaypointsToLine(offsetMeters);
 }
 
 function GetSpacingMeters() {
@@ -693,6 +614,10 @@ function UpdateToolsUi() {
     getNumericInputValue(BatchSpeedInput),
     getNumericInputValue(BatchHeadingInput),
     getNumericInputValue(BatchGimbalInput),
+    getNumericInputValue(BatchGimbalRollInput),
+    getNumericInputValue(BatchHoverInput),
+    getNumericInputValue(BatchZoomInput),
+    getSelectValue(BatchCameraActionSelect),
   ].some((Val) => Val !== null);
   const nudgeStepVal = getNumericInputValue(NudgeStepInput);
   const nudgeStepMeters = ConvertDistanceToMeters(nudgeStepVal);
@@ -700,12 +625,6 @@ function UpdateToolsUi() {
   const offsetDistVal = getNumericInputValue(OffsetDistanceInput);
   const offsetDistMeters = ConvertDistanceToMeters(offsetDistVal);
   const offsetValid = Number.isFinite(offsetDistMeters) && offsetDistMeters > 0;
-  const lineFeature = GetAlignLineFeature();
-  const canAlignLine =
-    HasSelection &&
-    lineFeature &&
-    typeof turf !== "undefined" &&
-    typeof turf.nearestPointOnLine === "function";
 
   if (DrawOptionsPanel) {
     DrawOptionsPanel.classList.toggle("visible", ShowDrawOptions);
@@ -772,15 +691,6 @@ function UpdateToolsUi() {
   }
   if (ApplyOffsetBtn) {
     ApplyOffsetBtn.disabled = !(HasSelection && offsetValid);
-  }
-  if (AlignToLineBtn) {
-    AlignToLineBtn.disabled = !canAlignLine;
-  }
-  if (AlignToPoiBtn) {
-    AlignToPoiBtn.disabled = !(HasSelection && Boolean(SearchMarker));
-  }
-  if (LineOffsetInput) {
-    LineOffsetInput.disabled = !lineFeature;
   }
   if (DrawLineBtn) {
     DrawLineBtn.classList.toggle("active", IsLineTool);

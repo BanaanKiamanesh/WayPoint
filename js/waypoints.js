@@ -40,6 +40,10 @@ function CopySelectedWaypoints() {
     Speed: Wp.Speed,
     Heading: Wp.Heading,
     Gimbal: Wp.Gimbal,
+    GimbalRoll: Wp.GimbalRoll,
+    Hover: Wp.Hover,
+    CameraAction: Wp.CameraAction,
+    Zoom: Wp.Zoom,
     UseGlobalAlt: Boolean(Wp.UseGlobalAlt),
     UseGlobalSpeed: Boolean(Wp.UseGlobalSpeed),
   }));
@@ -65,6 +69,10 @@ function PasteCopiedWaypoints() {
     wp.Speed = wp.UseGlobalSpeed ? SettingsState.globalSpeed : Item.Speed;
     wp.Heading = Item.Heading;
     wp.Gimbal = Item.Gimbal;
+    wp.GimbalRoll = Item.GimbalRoll;
+    wp.Hover = Item.Hover;
+    wp.CameraAction = Item.CameraAction || "none";
+    wp.Zoom = Item.Zoom;
   });
   RenderAll();
   PushHistory();
@@ -197,6 +205,10 @@ function InsertWaypointAfterIndex(index) {
     wp.Speed = current.Speed;
     wp.Heading = current.Heading;
     wp.Gimbal = current.Gimbal;
+    wp.GimbalRoll = current.GimbalRoll;
+    wp.Hover = current.Hover;
+    wp.CameraAction = current.CameraAction;
+    wp.Zoom = current.Zoom;
     wp.UseGlobalAlt = Boolean(current.UseGlobalAlt);
     wp.UseGlobalSpeed = Boolean(current.UseGlobalSpeed);
   }
@@ -274,6 +286,15 @@ function FieldLabel(Key) {
   }
   if (Key === "Gimbal") {
     return "Gimbal (deg)";
+  }
+  if (Key === "GimbalRoll") {
+    return "Gimbal roll (deg)";
+  }
+  if (Key === "Hover") {
+    return "Hover (s)";
+  }
+  if (Key === "Zoom") {
+    return "Zoom (x)";
   }
   return Key;
 }
@@ -439,6 +460,10 @@ function AddWaypoint(LatNum, LonNum, Options) {
     Speed: SettingsState.globalSpeed,
     Heading: DEFAULT_HEADING,
     Gimbal: DEFAULT_GIMBAL,
+    GimbalRoll: 0,
+    Hover: 0,
+    CameraAction: "none",
+    Zoom: null,
     UseGlobalAlt: true,
     UseGlobalSpeed: true,
   };
@@ -742,6 +767,9 @@ function RenderWaypointList() {
       { key: "Speed", step: "0.5", min: undefined, max: undefined, useKey: "UseGlobalSpeed" },
       { key: "Heading", step: "1", min: 0, max: 360, useKey: null },
       { key: "Gimbal", step: "1", min: -90, max: 90, useKey: null },
+      { key: "GimbalRoll", step: "1", min: -90, max: 90, useKey: null },
+      { key: "Hover", step: "1", min: 0, max: undefined, useKey: null },
+      { key: "Zoom", step: "0.1", min: 1, max: undefined, useKey: null, allowEmpty: true, placeholder: "-" },
     ].forEach((Field) => {
       const Wrap = document.createElement("div");
       Wrap.className = "wpField";
@@ -789,13 +817,25 @@ function RenderWaypointList() {
       Input.step = Field.step;
       if (Field.min !== undefined) Input.min = Field.min;
       if (Field.max !== undefined) Input.max = Field.max;
-      Input.value = Wp[Field.key];
+      if (Field.allowEmpty && !Number.isFinite(parseFloat(Wp[Field.key]))) {
+        Input.value = "";
+        if (Field.placeholder) Input.placeholder = Field.placeholder;
+      } else {
+        Input.value = Wp[Field.key];
+      }
       const IsGlobal = Field.useKey ? Boolean(Wp[Field.useKey]) : false;
       Input.disabled = IsGlobal;
       Input.addEventListener("click", (Ev) => Ev.stopPropagation());
       Input.addEventListener("change", (Ev) => {
         Ev.stopPropagation();
-        let ValNum = parseFloat(Ev.target.value);
+        const raw = String(Ev.target.value || "").trim();
+        if (Field.allowEmpty && raw === "") {
+          Wp[Field.key] = null;
+          RenderWaypointList();
+          PushHistory();
+          return;
+        }
+        let ValNum = parseFloat(raw);
         if (Number.isFinite(ValNum)) {
           if (Field.min !== undefined) ValNum = Math.max(Field.min, ValNum);
           if (Field.max !== undefined) ValNum = Math.min(Field.max, ValNum);
@@ -811,6 +851,38 @@ function RenderWaypointList() {
       Wrap.appendChild(Input);
       Fields.appendChild(Wrap);
     });
+
+    const CameraWrap = document.createElement("div");
+    CameraWrap.className = "wpField";
+
+    const CameraHeader = document.createElement("div");
+    CameraHeader.className = "wpFieldHeader";
+    const CameraLabel = document.createElement("span");
+    CameraLabel.textContent = "Camera action";
+    CameraHeader.appendChild(CameraLabel);
+    CameraWrap.appendChild(CameraHeader);
+
+    const CameraSelect = document.createElement("select");
+    [
+      { value: "none", label: "None" },
+      { value: "takePhoto", label: "Take photo" },
+      { value: "startRecording", label: "Start recording" },
+      { value: "stopRecording", label: "Stop recording" },
+    ].forEach((opt) => {
+      const Option = document.createElement("option");
+      Option.value = opt.value;
+      Option.textContent = opt.label;
+      CameraSelect.appendChild(Option);
+    });
+    CameraSelect.value = Wp.CameraAction || "none";
+    CameraSelect.addEventListener("click", (Ev) => Ev.stopPropagation());
+    CameraSelect.addEventListener("change", (Ev) => {
+      Ev.stopPropagation();
+      Wp.CameraAction = Ev.target.value || "none";
+      PushHistory();
+    });
+    CameraWrap.appendChild(CameraSelect);
+    Fields.appendChild(CameraWrap);
 
     Details.appendChild(Fields);
 

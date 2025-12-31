@@ -566,10 +566,17 @@ if (ClearBatchEditBtn) {
   BatchSpeedInput,
   BatchHeadingInput,
   BatchGimbalInput,
+  BatchGimbalRollInput,
+  BatchHoverInput,
+  BatchZoomInput,
 ].forEach((InputEl) => {
   if (!InputEl) return;
   InputEl.addEventListener("input", UpdateToolsUi);
 });
+
+if (BatchCameraActionSelect) {
+  BatchCameraActionSelect.addEventListener("change", UpdateToolsUi);
+}
 
 if (NudgeStepInput) {
   NudgeStepInput.addEventListener("input", UpdateToolsUi);
@@ -605,20 +612,6 @@ if (OffsetBearingInput) {
 if (ApplyOffsetBtn) {
   ApplyOffsetBtn.addEventListener("click", () => {
     ApplyOffsetSelectionFromInputs();
-  });
-}
-
-if (LineOffsetInput) {
-  LineOffsetInput.addEventListener("input", UpdateToolsUi);
-}
-if (AlignToLineBtn) {
-  AlignToLineBtn.addEventListener("click", () => {
-    ApplyAlignToLineFromInputs();
-  });
-}
-if (AlignToPoiBtn) {
-  AlignToPoiBtn.addEventListener("click", () => {
-    AlignSelectedWaypointsToPoi();
   });
 }
 
@@ -884,12 +877,6 @@ function ApplyUnitConversion(prevUnits, nextUnits) {
     const offsetVal = parseFloat(OffsetDistanceInput.value);
     if (Number.isFinite(offsetVal)) {
       OffsetDistanceInput.value = String(distVal(offsetVal));
-    }
-  }
-  if (LineOffsetInput) {
-    const lineOffsetVal = parseFloat(LineOffsetInput.value);
-    if (Number.isFinite(lineOffsetVal)) {
-      LineOffsetInput.value = String(distVal(lineOffsetVal));
     }
   }
 

@@ -406,9 +406,10 @@ function buildKmlForWaypoints() {
 function buildCsvForWaypoints() {
   const lines = [];
   lines.push(
-    "lat,lon,alt,speed,heading,gimbal,useGlobalAlt,useGlobalSpeed"
+    "lat,lon,alt,speed,heading,gimbal,gimbalRoll,hover,cameraAction,zoom,useGlobalAlt,useGlobalSpeed"
   );
   Waypoints.forEach((Wp) => {
+    const zoomVal = Number.isFinite(Wp.Zoom) ? formatCsvNumber(Wp.Zoom) : "";
     lines.push(
       [
         formatCsvNumber(Wp.Lat, 7),
@@ -417,6 +418,10 @@ function buildCsvForWaypoints() {
         formatCsvNumber(Wp.Speed),
         formatCsvNumber(Wp.Heading),
         formatCsvNumber(Wp.Gimbal),
+        formatCsvNumber(Wp.GimbalRoll),
+        formatCsvNumber(Wp.Hover),
+        Wp.CameraAction || "",
+        zoomVal,
         Wp.UseGlobalAlt ? "1" : "0",
         Wp.UseGlobalSpeed ? "1" : "0",
       ].join(",")
@@ -724,6 +729,26 @@ function parseCsvBoolean(value) {
   return null;
 }
 
+function normalizeCameraAction(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return null;
+  if (text === "none" || text === "off" || text === "no") return "none";
+  if (text === "takephoto" || text === "photo" || text === "take_photo") {
+    return "takePhoto";
+  }
+  if (
+    text === "startrecording" ||
+    text === "startrecord" ||
+    text === "record"
+  ) {
+    return "startRecording";
+  }
+  if (text === "stoprecording" || text === "stoprecord") {
+    return "stopRecording";
+  }
+  return null;
+}
+
 function extractWaypointsFromCsv(csvText) {
   const rows = parseCsvText(csvText);
   if (!rows.length) return [];
@@ -750,6 +775,10 @@ function extractWaypointsFromCsv(csvText) {
     speed: ["speed", "velocity"],
     heading: ["heading", "yaw", "bearing"],
     gimbal: ["gimbal", "pitch"],
+    gimbalRoll: ["gimbalroll", "roll", "rollangle"],
+    hover: ["hover", "hoversec", "hoverseconds", "delay", "dwell"],
+    cameraAction: ["cameraaction", "action", "camera", "cameraactiontype"],
+    zoom: ["zoom", "zoomlevel", "zoomx"],
     useGlobalAlt: ["useglobalalt", "globalalt", "useglobalaltitude"],
     useGlobalSpeed: ["useglobalspeed", "globalspeed"],
   };
@@ -762,7 +791,7 @@ function extractWaypointsFromCsv(csvText) {
     return -1;
   }
 
-  const fallbackIndex = {
+  const fallbackIndexV1 = {
     lat: 0,
     lon: 1,
     alt: 2,
@@ -772,6 +801,20 @@ function extractWaypointsFromCsv(csvText) {
     useGlobalAlt: 6,
     useGlobalSpeed: 7,
   };
+  const fallbackIndexV2 = {
+    lat: 0,
+    lon: 1,
+    alt: 2,
+    speed: 3,
+    heading: 4,
+    gimbal: 5,
+    gimbalRoll: 6,
+    hover: 7,
+    cameraAction: 8,
+    zoom: 9,
+    useGlobalAlt: 10,
+    useGlobalSpeed: 11,
+  };
 
   const startRow = hasHeader ? 1 : 0;
   const coords = [];
@@ -779,6 +822,9 @@ function extractWaypointsFromCsv(csvText) {
   for (let i = startRow; i < cleanRows.length; i += 1) {
     const row = cleanRows[i];
     if (!row.length || row.every((cell) => cell === "")) continue;
+
+    const useV2Fallback = !hasHeader && row.length >= 10;
+    const fallbackIndex = useV2Fallback ? fallbackIndexV2 : fallbackIndexV1;
 
     const latIdx = hasHeader ? getIndex(headerAliases.lat) : fallbackIndex.lat;
     const lonIdx = hasHeader ? getIndex(headerAliases.lon) : fallbackIndex.lon;
@@ -790,6 +836,14 @@ function extractWaypointsFromCsv(csvText) {
     const speedIdx = hasHeader ? getIndex(headerAliases.speed) : fallbackIndex.speed;
     const headingIdx = hasHeader ? getIndex(headerAliases.heading) : fallbackIndex.heading;
     const gimbalIdx = hasHeader ? getIndex(headerAliases.gimbal) : fallbackIndex.gimbal;
+    const gimbalRollIdx = hasHeader
+      ? getIndex(headerAliases.gimbalRoll)
+      : fallbackIndex.gimbalRoll;
+    const hoverIdx = hasHeader ? getIndex(headerAliases.hover) : fallbackIndex.hover;
+    const cameraActionIdx = hasHeader
+      ? getIndex(headerAliases.cameraAction)
+      : fallbackIndex.cameraAction;
+    const zoomIdx = hasHeader ? getIndex(headerAliases.zoom) : fallbackIndex.zoom;
     const useAltIdx = hasHeader ? getIndex(headerAliases.useGlobalAlt) : fallbackIndex.useGlobalAlt;
     const useSpeedIdx =
       hasHeader ? getIndex(headerAliases.useGlobalSpeed) : fallbackIndex.useGlobalSpeed;
@@ -798,6 +852,10 @@ function extractWaypointsFromCsv(csvText) {
     const speedVal = parseFloat(row[speedIdx] || "");
     const headingVal = parseFloat(row[headingIdx] || "");
     const gimbalVal = parseFloat(row[gimbalIdx] || "");
+    const gimbalRollVal = parseFloat(row[gimbalRollIdx] || "");
+    const hoverVal = parseFloat(row[hoverIdx] || "");
+    const zoomVal = parseFloat(row[zoomIdx] || "");
+    const cameraActionVal = normalizeCameraAction(row[cameraActionIdx] || "");
 
     const useGlobalAlt = parseCsvBoolean(row[useAltIdx]);
     const useGlobalSpeed = parseCsvBoolean(row[useSpeedIdx]);
@@ -820,6 +878,18 @@ function extractWaypointsFromCsv(csvText) {
     }
     if (Number.isFinite(gimbalVal)) {
       entry.gimbal = gimbalVal;
+    }
+    if (Number.isFinite(gimbalRollVal)) {
+      entry.gimbalRoll = gimbalRollVal;
+    }
+    if (Number.isFinite(hoverVal)) {
+      entry.hover = hoverVal;
+    }
+    if (Number.isFinite(zoomVal)) {
+      entry.zoom = zoomVal;
+    }
+    if (cameraActionVal) {
+      entry.cameraAction = cameraActionVal;
     }
     if (useGlobalAlt !== null) {
       entry.useGlobalAlt = useGlobalAlt;
@@ -912,6 +982,18 @@ function applyImportedWaypoints(coords, pathMode) {
     }
     if (Number.isFinite(coord.gimbal)) {
       wp.Gimbal = coord.gimbal;
+    }
+    if (Number.isFinite(coord.gimbalRoll)) {
+      wp.GimbalRoll = coord.gimbalRoll;
+    }
+    if (Number.isFinite(coord.hover)) {
+      wp.Hover = Math.max(0, coord.hover);
+    }
+    if (Number.isFinite(coord.zoom)) {
+      wp.Zoom = Math.max(1, coord.zoom);
+    }
+    if (coord.cameraAction) {
+      wp.CameraAction = coord.cameraAction;
     }
   });
 
