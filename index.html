@@ -18,7 +18,7 @@
     />
 
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/styles.css?v=2" />
   </head>
 
   <body>
@@ -244,6 +244,76 @@
           </div>
           <div class="settingsDivider"></div>
           <div class="toolSection">
+            <div class="toolTitle">Batch edit selection</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchAltInput">Altitude (m)</label>
+              <input id="BatchAltInput" type="number" step="1" placeholder="-" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchSpeedInput">Speed (m/s)</label>
+              <input id="BatchSpeedInput" type="number" step="0.5" placeholder="-" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchHeadingInput">Heading (deg)</label>
+              <input id="BatchHeadingInput" type="number" min="0" max="360" step="1" placeholder="-" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="BatchGimbalInput">Gimbal (deg)</label>
+              <input id="BatchGimbalInput" type="number" min="-90" max="90" step="1" placeholder="-" />
+            </div>
+            <div class="settingsRow buttonRow">
+              <button id="ApplyBatchEditBtn" type="button" class="toolButton">Apply to selected</button>
+              <button id="ClearBatchEditBtn" type="button" class="toolButton secondary">Clear</button>
+            </div>
+            <div class="settingsHint">Leave fields blank to keep current values.</div>
+          </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Nudge selection</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="NudgeStepInput">Step (m)</label>
+              <input id="NudgeStepInput" type="number" min="0" step="0.1" value="1" />
+            </div>
+            <div class="settingsRow buttonRow">
+              <button id="NudgeNorthBtn" type="button" class="toolButton">N</button>
+              <button id="NudgeSouthBtn" type="button" class="toolButton">S</button>
+              <button id="NudgeWestBtn" type="button" class="toolButton">W</button>
+              <button id="NudgeEastBtn" type="button" class="toolButton">E</button>
+            </div>
+          </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Offset selection</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="OffsetDistanceInput">Distance (m)</label>
+              <input id="OffsetDistanceInput" type="number" min="0" step="0.1" value="10" />
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="OffsetBearingInput">Bearing (deg)</label>
+              <input id="OffsetBearingInput" type="number" step="1" value="0" />
+            </div>
+            <div class="settingsRow buttonRow">
+              <button id="ApplyOffsetBtn" type="button" class="toolButton">Offset selected</button>
+            </div>
+            <div class="settingsHint">Bearing: 0 = north, 90 = east.</div>
+          </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Align selection</div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="LineOffsetInput">Line offset (m)</label>
+              <input id="LineOffsetInput" type="number" step="0.1" value="0" />
+            </div>
+            <div class="settingsRow buttonRow">
+              <button id="AlignToLineBtn" type="button" class="toolButton">Align to drawn line</button>
+              <button id="AlignToPoiBtn" type="button" class="toolButton secondary">
+                Align to POI
+              </button>
+            </div>
+            <div class="settingsHint">POI uses the last search marker.</div>
+          </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
             <div class="toolTitle">Reverse points</div>
             <div class="settingsRow buttonRow">
               <button id="ReverseWaypointsBtn" type="button" class="toolButton">
@@ -430,18 +500,18 @@
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="js/coverage.js"></script>
-    <script src="js/ellipse.js"></script>
+    <script src="js/coverage.js?v=2"></script>
+    <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-    <script src="js/app-state.js"></script>
-    <script src="js/helpers.js"></script>
-    <script src="js/ellipse-tools.js"></script>
-    <script src="js/algorithms.js"></script>
-    <script src="js/waypoints.js"></script>
-    <script src="js/export.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/history.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/app-state.js?v=2"></script>
+    <script src="js/helpers.js?v=2"></script>
+    <script src="js/ellipse-tools.js?v=2"></script>
+    <script src="js/algorithms.js?v=2"></script>
+    <script src="js/waypoints.js?v=2"></script>
+    <script src="js/export.js?v=2"></script>
+    <script src="js/ui.js?v=3"></script>
+    <script src="js/history.js?v=2"></script>
+    <script src="js/main.js?v=2"></script>
   </body>
 </html>

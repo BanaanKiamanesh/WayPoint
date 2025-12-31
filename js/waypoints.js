@@ -10,18 +10,24 @@ let DragSelectionState = null;
 const PASTE_OFFSET_METERS = 5;
 let CopiedWaypoints = null;
 let PasteOffsetIndex = 0;
+let WaypointDragState = null;
+let WaypointListDragBound = false;
 
-function offsetLatLngMeters(lat, lon, offsetMeters) {
+function offsetLatLngByMeters(lat, lon, northMeters, eastMeters) {
   if (typeof turf !== "undefined" && turf.toMercator && turf.toWgs84) {
     const merc = turf.toMercator([lon, lat]);
-    const wgs = turf.toWgs84([merc[0] + offsetMeters, merc[1] + offsetMeters]);
+    const wgs = turf.toWgs84([merc[0] + eastMeters, merc[1] + northMeters]);
     return { lat: wgs[1], lon: wgs[0] };
   }
   const latRad = (lat * Math.PI) / 180;
-  const deltaLat = offsetMeters / 111320;
+  const deltaLat = northMeters / 111320;
   const cosLat = Math.cos(latRad);
-  const deltaLon = Math.abs(cosLat) > 1e-6 ? offsetMeters / (111320 * cosLat) : 0;
+  const deltaLon = Math.abs(cosLat) > 1e-6 ? eastMeters / (111320 * cosLat) : 0;
   return { lat: lat + deltaLat, lon: lon + deltaLon };
+}
+
+function offsetLatLngMeters(lat, lon, offsetMeters) {
+  return offsetLatLngByMeters(lat, lon, offsetMeters, offsetMeters);
 }
 
 function CopySelectedWaypoints() {
@@ -90,87 +96,147 @@ function UpdatePolyline() {
   WaypointLine.setLatLngs(LatLngs);
 }
 
-const CURVE_SAMPLE_SPACING_M = 25;
-const CURVE_SAMPLE_MIN_STEPS = 6;
-const CURVE_SAMPLE_MAX_STEPS = 60;
-const CURVE_HANDLE_SCALE = 3.0;
-const CURVE_HANDLE_MAX_RATIO = 0.7;
+function ClearWaypointDragIndicators() {
+  if (!WaypointListDiv) return;
+  const dragId = WaypointDragState && WaypointDragState.dragId;
+  const Rows = WaypointListDiv.querySelectorAll(".wpRow");
+  Rows.forEach((Row) => {
+    Row.classList.remove("dropBefore", "dropAfter", "dragging");
+    if (dragId && Row.dataset && Row.dataset.id === dragId) {
+      Row.classList.add("dragging");
+    }
+  });
+}
+
+function MoveWaypointToIndex(dragId, targetIndex) {
+  if (!dragId) return false;
+  const fromIdx = Waypoints.findIndex((Wp) => Wp.Id === dragId);
+  if (fromIdx < 0) return false;
+  const [Item] = Waypoints.splice(fromIdx, 1);
+  if (!Number.isFinite(targetIndex)) {
+    Waypoints.splice(fromIdx, 0, Item);
+    return false;
+  }
+  let insertIndex = targetIndex;
+  if (fromIdx < insertIndex) insertIndex -= 1;
+  insertIndex = Math.max(0, Math.min(insertIndex, Waypoints.length));
+  if (insertIndex === fromIdx) {
+    Waypoints.splice(insertIndex, 0, Item);
+    return false;
+  }
+  Waypoints.splice(insertIndex, 0, Item);
+  return true;
+}
+
+function ReorderWaypointsByDrop(dragId, targetId, before) {
+  if (!dragId || !targetId || dragId === targetId) return false;
+  const targetIdx = Waypoints.findIndex((Wp) => Wp.Id === targetId);
+  if (targetIdx < 0) return false;
+  const insertIndex = before ? targetIdx : targetIdx + 1;
+  return MoveWaypointToIndex(dragId, insertIndex);
+}
+
+function GetInsertLatLngAfterIndex(index) {
+  const current = Waypoints[index];
+  if (!current) return null;
+  const next = Waypoints[index + 1];
+  if (next) {
+    return {
+      lat: (current.Lat + next.Lat) / 2,
+      lon: (current.Lon + next.Lon) / 2,
+    };
+  }
+  const prev = Waypoints[index - 1];
+  if (prev) {
+    const dLat = current.Lat - prev.Lat;
+    const dLon = current.Lon - prev.Lon;
+    if (Math.abs(dLat) > 1e-10 || Math.abs(dLon) > 1e-10) {
+      return {
+        lat: current.Lat + dLat * 0.25,
+        lon: current.Lon + dLon * 0.25,
+      };
+    }
+  }
+  return offsetLatLngByMeters(current.Lat, current.Lon, 2, 2);
+}
+
+function InsertWaypointAfterIndex(index) {
+  const Pos = GetInsertLatLngAfterIndex(index);
+  if (!Pos) return;
+  const current = Waypoints[index];
+  const wp = AddWaypoint(Pos.lat, Pos.lon, {
+    selectionMode: "replace",
+    skipRender: true,
+    skipHistory: true,
+    insertIndex: index + 1,
+  });
+  if (current) {
+    wp.Alt = current.Alt;
+    wp.Speed = current.Speed;
+    wp.Heading = current.Heading;
+    wp.Gimbal = current.Gimbal;
+    wp.UseGlobalAlt = Boolean(current.UseGlobalAlt);
+    wp.UseGlobalSpeed = Boolean(current.UseGlobalSpeed);
+  }
+  ExpandedIds.add(wp.Id);
+  RenderAll();
+  PushHistory();
+}
+
+const CURVE_SAMPLE_SPACING_M = 10;
+const CURVE_SAMPLE_MIN_POINTS = 16;
+const CURVE_SAMPLE_MAX_POINTS = 2000;
+const CURVE_SHARPNESS = 0.95;
 
 function getDisplayPathLatLngs() {
   if (!Waypoints.length) return [];
   if (PathDisplayMode !== "curved" || Waypoints.length < 3) {
     return Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
   }
-  if (typeof turf === "undefined" || !turf.toMercator || !turf.toWgs84) {
+  if (
+    typeof turf === "undefined" ||
+    !turf.lineString ||
+    !turf.along ||
+    !turf.length
+  ) {
     return Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
   }
   return buildCurvedPathLatLngs();
 }
 
-function cubicBezier(a, b, c, d, t) {
-  const t2 = t * t;
-  const t3 = t2 * t;
-  const mt = 1 - t;
-  const mt2 = mt * mt;
-  const mt3 = mt2 * mt;
-  return mt3 * a + 3 * mt2 * t * b + 3 * mt * t2 * c + t3 * d;
-}
-
-function clampHandle(vec, maxLen) {
-  const len = Math.hypot(vec[0], vec[1]);
-  if (!Number.isFinite(len) || len <= 0 || len <= maxLen) return vec;
-  const scale = maxLen / len;
-  return [vec[0] * scale, vec[1] * scale];
-}
-
-function buildBezierControls(p0, p1, p2, p3) {
-  const k = CURVE_HANDLE_SCALE / 6;
-  const segLen = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
-  const maxHandle = Number.isFinite(segLen) ? segLen * CURVE_HANDLE_MAX_RATIO : 0;
-  let v1 = [(p2[0] - p0[0]) * k, (p2[1] - p0[1]) * k];
-  let v2 = [(p3[0] - p1[0]) * k, (p3[1] - p1[1]) * k];
-
-  if (maxHandle > 0) {
-    v1 = clampHandle(v1, maxHandle);
-    v2 = clampHandle(v2, maxHandle);
+function buildCurvedPathLatLngs() {
+  const coords = Waypoints.map((Wp) => [Wp.Lon, Wp.Lat]);
+  if (coords.length < 2) return Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
+  const baseLine = turf.lineString(coords);
+  const curvedLine =
+    typeof turf.bezierSpline === "function"
+      ? turf.bezierSpline(baseLine, { sharpness: CURVE_SHARPNESS })
+      : baseLine;
+  const curvedCoords = curvedLine && curvedLine.geometry && curvedLine.geometry.coordinates;
+  if (!curvedCoords || curvedCoords.length < 2) {
+    return Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
   }
 
-  return {
-    c1: [p1[0] + v1[0], p1[1] + v1[1]],
-    c2: [p2[0] - v2[0], p2[1] - v2[1]],
-    segLen: segLen,
-  };
-}
+  const lengthKm = turf.length(curvedLine, { units: "kilometers" });
+  const lengthM = lengthKm * 1000;
+  if (!Number.isFinite(lengthM) || lengthM <= 0) {
+    return curvedCoords.map((coord) => [coord[1], coord[0]]);
+  }
 
-function buildCurvedPathLatLngs() {
-  const pts = Waypoints.map((Wp) => turf.toMercator([Wp.Lon, Wp.Lat]));
+  const rawPoints = Math.ceil(lengthM / CURVE_SAMPLE_SPACING_M);
+  const points = Math.min(
+    CURVE_SAMPLE_MAX_POINTS,
+    Math.max(CURVE_SAMPLE_MIN_POINTS, rawPoints)
+  );
   const out = [];
-
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || pts[i + 1];
-    const controls = buildBezierControls(p0, p1, p2, p3);
-    const segLen = controls.segLen;
-    const rawSteps = Number.isFinite(segLen)
-      ? Math.round(segLen / CURVE_SAMPLE_SPACING_M)
-      : CURVE_SAMPLE_MIN_STEPS;
-    const steps = Math.min(
-      CURVE_SAMPLE_MAX_STEPS,
-      Math.max(CURVE_SAMPLE_MIN_STEPS, rawSteps)
-    );
-
-    for (let s = 0; s <= steps; s += 1) {
-      if (i > 0 && s === 0) continue;
-      const t = steps === 0 ? 0 : s / steps;
-      const x = cubicBezier(p1[0], controls.c1[0], controls.c2[0], p2[0], t);
-      const y = cubicBezier(p1[1], controls.c1[1], controls.c2[1], p2[1], t);
-      const ll = turf.toWgs84([x, y]);
-      out.push([ll[1], ll[0]]);
+  for (let i = 0; i <= points; i += 1) {
+    const distKm = (lengthKm * i) / points;
+    const pt = turf.along(curvedLine, distKm, { units: "kilometers" });
+    if (pt && pt.geometry && pt.geometry.coordinates) {
+      const coord = pt.geometry.coordinates;
+      out.push([coord[1], coord[0]]);
     }
   }
-
   return out;
 }
 
@@ -349,7 +415,13 @@ function AddWaypoint(LatNum, LonNum, Options) {
     UseGlobalAlt: true,
     UseGlobalSpeed: true,
   };
-  Waypoints.push(NewWp);
+  const insertIndex = Number.isFinite(Opts.insertIndex) ? Opts.insertIndex : null;
+  if (insertIndex !== null) {
+    const clamped = Math.max(0, Math.min(insertIndex, Waypoints.length));
+    Waypoints.splice(clamped, 0, NewWp);
+  } else {
+    Waypoints.push(NewWp);
+  }
 
   const SelectionMode = Opts.selectionMode || "replace"; // replace | add | none
   if (SelectionMode === "replace") {
@@ -426,6 +498,35 @@ function ClearAllWaypoints() {
 function RenderWaypointList() {
   if (!WaypointListDiv) return;
   WaypointListDiv.innerHTML = "";
+  if (!WaypointListDragBound) {
+    WaypointListDiv.addEventListener("dragover", (Ev) => {
+      if (!WaypointDragState) return;
+      const target = Ev.target;
+      if (target && target.closest && target.closest(".wpRow")) return;
+      Ev.preventDefault();
+      if (Ev.dataTransfer) {
+        Ev.dataTransfer.dropEffect = "move";
+      }
+      ClearWaypointDragIndicators();
+    });
+    WaypointListDiv.addEventListener("drop", (Ev) => {
+      if (!WaypointDragState) return;
+      const target = Ev.target;
+      if (target && target.closest && target.closest(".wpRow")) return;
+      Ev.preventDefault();
+      const dragId =
+        (Ev.dataTransfer && Ev.dataTransfer.getData("text/plain")) ||
+        (WaypointDragState && WaypointDragState.dragId);
+      const moved = MoveWaypointToIndex(dragId, Waypoints.length);
+      WaypointDragState = null;
+      ClearWaypointDragIndicators();
+      if (moved) {
+        RenderAll();
+        PushHistory();
+      }
+    });
+    WaypointListDragBound = true;
+  }
   if (ClearAllWaypointsBtn) {
     ClearAllWaypointsBtn.disabled = Waypoints.length === 0;
   }
@@ -476,6 +577,27 @@ function RenderWaypointList() {
     const HeaderMain = document.createElement("div");
     HeaderMain.className = "wpHeaderMain";
 
+    const DragHandle = document.createElement("span");
+    DragHandle.className = "wpDragHandle";
+    DragHandle.textContent = "::";
+    DragHandle.title = "Drag to reorder";
+    DragHandle.draggable = true;
+    DragHandle.addEventListener("mousedown", (Ev) => Ev.stopPropagation());
+    DragHandle.addEventListener("click", (Ev) => Ev.stopPropagation());
+    DragHandle.addEventListener("dragstart", (Ev) => {
+      WaypointDragState = { dragId: Wp.Id, overId: null, before: null };
+      ClearWaypointDragIndicators();
+      Row.classList.add("dragging");
+      if (Ev.dataTransfer) {
+        Ev.dataTransfer.effectAllowed = "move";
+        Ev.dataTransfer.setData("text/plain", Wp.Id);
+      }
+    });
+    DragHandle.addEventListener("dragend", () => {
+      WaypointDragState = null;
+      ClearWaypointDragIndicators();
+    });
+
     const Caret = document.createElement("span");
     Caret.className = "wpCaret";
     Caret.textContent = IsExpanded ? "v" : ">";
@@ -488,9 +610,23 @@ function RenderWaypointList() {
     Label.className = "wpLabel";
     Label.textContent = "Waypoint";
 
+    HeaderMain.appendChild(DragHandle);
     HeaderMain.appendChild(Caret);
     HeaderMain.appendChild(Index);
     HeaderMain.appendChild(Label);
+
+    const HeaderActions = document.createElement("div");
+    HeaderActions.className = "wpHeaderActions";
+
+    const InsertBtn = document.createElement("button");
+    InsertBtn.type = "button";
+    InsertBtn.className = "wpInsert";
+    InsertBtn.textContent = "Insert";
+    InsertBtn.title = "Insert after this waypoint";
+    InsertBtn.addEventListener("click", (Ev) => {
+      Ev.stopPropagation();
+      InsertWaypointAfterIndex(Idx);
+    });
 
     const DeleteBtn = document.createElement("button");
     DeleteBtn.type = "button";
@@ -502,7 +638,9 @@ function RenderWaypointList() {
     });
 
     Header.appendChild(HeaderMain);
-    Header.appendChild(DeleteBtn);
+    HeaderActions.appendChild(InsertBtn);
+    HeaderActions.appendChild(DeleteBtn);
+    Header.appendChild(HeaderActions);
 
     HeaderMain.addEventListener("click", (Ev) => {
       Ev.stopPropagation();
@@ -521,6 +659,43 @@ function RenderWaypointList() {
       }
       RenderAll();
       PushHistory();
+    });
+
+    Row.addEventListener("dragover", (Ev) => {
+      if (!WaypointDragState) return;
+      Ev.preventDefault();
+      const rect = Row.getBoundingClientRect();
+      const before = Ev.clientY < rect.top + rect.height / 2;
+      if (
+        WaypointDragState.overId !== Wp.Id ||
+        WaypointDragState.before !== before
+      ) {
+        ClearWaypointDragIndicators();
+        Row.classList.add(before ? "dropBefore" : "dropAfter");
+        WaypointDragState.overId = Wp.Id;
+        WaypointDragState.before = before;
+      }
+      if (Ev.dataTransfer) {
+        Ev.dataTransfer.dropEffect = "move";
+      }
+    });
+    Row.addEventListener("drop", (Ev) => {
+      if (!WaypointDragState) return;
+      Ev.preventDefault();
+      const dragId =
+        (Ev.dataTransfer && Ev.dataTransfer.getData("text/plain")) ||
+        (WaypointDragState && WaypointDragState.dragId);
+      const moved = ReorderWaypointsByDrop(
+        dragId,
+        Wp.Id,
+        WaypointDragState.before !== false
+      );
+      WaypointDragState = null;
+      ClearWaypointDragIndicators();
+      if (moved) {
+        RenderAll();
+        PushHistory();
+      }
     });
 
     const Details = document.createElement("div");

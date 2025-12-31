@@ -544,6 +544,79 @@ if (ApplyRotationBtn) {
   });
 }
 
+if (ApplyBatchEditBtn) {
+  ApplyBatchEditBtn.addEventListener("click", () => {
+    ApplyBatchEditToSelected();
+  });
+}
+
+if (ClearBatchEditBtn) {
+  ClearBatchEditBtn.addEventListener("click", () => {
+    ClearBatchEditInputs();
+  });
+}
+
+[
+  BatchAltInput,
+  BatchSpeedInput,
+  BatchHeadingInput,
+  BatchGimbalInput,
+].forEach((InputEl) => {
+  if (!InputEl) return;
+  InputEl.addEventListener("input", UpdateToolsUi);
+});
+
+if (NudgeStepInput) {
+  NudgeStepInput.addEventListener("input", UpdateToolsUi);
+}
+
+if (NudgeNorthBtn) {
+  NudgeNorthBtn.addEventListener("click", () => {
+    NudgeSelectionByDirection("north");
+  });
+}
+if (NudgeSouthBtn) {
+  NudgeSouthBtn.addEventListener("click", () => {
+    NudgeSelectionByDirection("south");
+  });
+}
+if (NudgeWestBtn) {
+  NudgeWestBtn.addEventListener("click", () => {
+    NudgeSelectionByDirection("west");
+  });
+}
+if (NudgeEastBtn) {
+  NudgeEastBtn.addEventListener("click", () => {
+    NudgeSelectionByDirection("east");
+  });
+}
+
+if (OffsetDistanceInput) {
+  OffsetDistanceInput.addEventListener("input", UpdateToolsUi);
+}
+if (OffsetBearingInput) {
+  OffsetBearingInput.addEventListener("input", UpdateToolsUi);
+}
+if (ApplyOffsetBtn) {
+  ApplyOffsetBtn.addEventListener("click", () => {
+    ApplyOffsetSelectionFromInputs();
+  });
+}
+
+if (LineOffsetInput) {
+  LineOffsetInput.addEventListener("input", UpdateToolsUi);
+}
+if (AlignToLineBtn) {
+  AlignToLineBtn.addEventListener("click", () => {
+    ApplyAlignToLineFromInputs();
+  });
+}
+if (AlignToPoiBtn) {
+  AlignToPoiBtn.addEventListener("click", () => {
+    AlignSelectedWaypointsToPoi();
+  });
+}
+
 if (ReverseWaypointsBtn) {
   ReverseWaypointsBtn.addEventListener("click", () => {
     ReverseWaypointOrder();
@@ -781,6 +854,36 @@ function ApplyUnitConversion(prevUnits, nextUnits) {
     const ellipseVal = parseFloat(EllipseResolutionInput.value);
     if (Number.isFinite(ellipseVal)) {
       EllipseResolutionInput.value = String(distVal(ellipseVal));
+    }
+  }
+  if (BatchAltInput) {
+    const batchAltVal = parseFloat(BatchAltInput.value);
+    if (Number.isFinite(batchAltVal)) {
+      BatchAltInput.value = String(distVal(batchAltVal));
+    }
+  }
+  if (BatchSpeedInput) {
+    const batchSpeedVal = parseFloat(BatchSpeedInput.value);
+    if (Number.isFinite(batchSpeedVal)) {
+      BatchSpeedInput.value = String(speedVal(batchSpeedVal));
+    }
+  }
+  if (NudgeStepInput) {
+    const nudgeVal = parseFloat(NudgeStepInput.value);
+    if (Number.isFinite(nudgeVal)) {
+      NudgeStepInput.value = String(distVal(nudgeVal));
+    }
+  }
+  if (OffsetDistanceInput) {
+    const offsetVal = parseFloat(OffsetDistanceInput.value);
+    if (Number.isFinite(offsetVal)) {
+      OffsetDistanceInput.value = String(distVal(offsetVal));
+    }
+  }
+  if (LineOffsetInput) {
+    const lineOffsetVal = parseFloat(LineOffsetInput.value);
+    if (Number.isFinite(lineOffsetVal)) {
+      LineOffsetInput.value = String(distVal(lineOffsetVal));
     }
   }
 

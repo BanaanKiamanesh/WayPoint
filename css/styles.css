@@ -617,6 +617,44 @@ body {
   gap: 8px;
 }
 
+.wpHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wpDragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+}
+
+.wpDragHandle:active {
+  cursor: grabbing;
+}
+
+.wpRow.dragging {
+  opacity: 0.55;
+}
+
+.wpRow.dropBefore {
+  box-shadow: 0 -2px 0 rgba(77, 179, 255, 0.9);
+}
+
+.wpRow.dropAfter {
+  box-shadow: 0 2px 0 rgba(77, 179, 255, 0.9);
+}
+
 .wpCaret {
   color: var(--muted);
   font-size: 14px;
@@ -642,7 +680,8 @@ body {
   font-size: 14px;
 }
 
-.wpDelete {
+.wpDelete,
+.wpInsert {
   padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -652,7 +691,8 @@ body {
   min-width: 70px;
 }
 
-.wpDelete:hover {
+.wpDelete:hover,
+.wpInsert:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 

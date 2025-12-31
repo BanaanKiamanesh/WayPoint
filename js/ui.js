@@ -174,6 +174,50 @@ function ReverseWaypointOrder() {
   PushHistory();
 }
 
+function getNumericInputValue(InputEl) {
+  if (!InputEl) return null;
+  const raw = String(InputEl.value || "").trim();
+  if (raw === "") return null;
+  const val = parseFloat(raw);
+  return Number.isFinite(val) ? val : null;
+}
+
+function convertSignedDistanceToMeters(val) {
+  if (!Number.isFinite(val)) return null;
+  return SettingsState.units === "imperial" ? val * METERS_PER_FOOT : val;
+}
+
+function ApplyPathHeadingsFromLatLngs(latLngs, waypoints) {
+  if (
+    typeof bearingBetweenPoints !== "function" ||
+    !latLngs ||
+    latLngs.length < 2 ||
+    !waypoints ||
+    waypoints.length !== latLngs.length
+  ) {
+    return;
+  }
+
+  let lastHeading = null;
+  for (let i = 0; i < latLngs.length - 1; i++) {
+    const cur = latLngs[i];
+    const next = latLngs[i + 1];
+    const heading = bearingBetweenPoints(
+      { lat: cur[0], lng: cur[1] },
+      { lat: next[0], lng: next[1] }
+    );
+    if (Number.isFinite(heading)) {
+      waypoints[i].Heading = heading;
+      lastHeading = heading;
+    } else if (lastHeading !== null) {
+      waypoints[i].Heading = lastHeading;
+    }
+  }
+  if (lastHeading !== null) {
+    waypoints[waypoints.length - 1].Heading = lastHeading;
+  }
+}
+
 function GetFirstDrawnFeature() {
   let GeoJson = null;
   DrawnItems.eachLayer((Layer) => {
@@ -182,6 +226,201 @@ function GetFirstDrawnFeature() {
     }
   });
   return GeoJson;
+}
+
+function GetAlignLineFeature() {
+  const Feature = GetFirstDrawnFeature();
+  if (!Feature || !Feature.geometry) return null;
+  const geom = Feature.geometry;
+  if (geom.type === "LineString") return Feature;
+  if (geom.type === "MultiLineString" && geom.coordinates && geom.coordinates.length) {
+    return {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: geom.coordinates[0] },
+      properties: Feature.properties || {},
+    };
+  }
+  if (geom.type === "Polygon" && geom.coordinates && geom.coordinates.length) {
+    return {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: geom.coordinates[0] },
+      properties: Feature.properties || {},
+    };
+  }
+  if (geom.type === "MultiPolygon" && geom.coordinates && geom.coordinates.length) {
+    const ring = geom.coordinates[0] && geom.coordinates[0][0];
+    if (ring && ring.length) {
+      return {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: ring },
+        properties: Feature.properties || {},
+      };
+    }
+  }
+  return null;
+}
+
+function ApplyBatchEditToSelected() {
+  if (!SelectedIds.size) return;
+  const altVal = getNumericInputValue(BatchAltInput);
+  const speedVal = getNumericInputValue(BatchSpeedInput);
+  const headingVal = getNumericInputValue(BatchHeadingInput);
+  const gimbalVal = getNumericInputValue(BatchGimbalInput);
+
+  if (
+    altVal === null &&
+    speedVal === null &&
+    headingVal === null &&
+    gimbalVal === null
+  ) {
+    return;
+  }
+
+  Waypoints.forEach((Wp) => {
+    if (!SelectedIds.has(Wp.Id)) return;
+    if (altVal !== null) {
+      Wp.Alt = altVal;
+      Wp.UseGlobalAlt = false;
+    }
+    if (speedVal !== null) {
+      Wp.Speed = speedVal;
+      Wp.UseGlobalSpeed = false;
+    }
+    if (headingVal !== null) {
+      const clamped = Math.max(0, Math.min(360, headingVal));
+      Wp.Heading = clamped;
+    }
+    if (gimbalVal !== null) {
+      const clamped = Math.max(-90, Math.min(90, gimbalVal));
+      Wp.Gimbal = clamped;
+    }
+  });
+
+  RenderAll();
+  PushHistory();
+}
+
+function ClearBatchEditInputs() {
+  if (BatchAltInput) BatchAltInput.value = "";
+  if (BatchSpeedInput) BatchSpeedInput.value = "";
+  if (BatchHeadingInput) BatchHeadingInput.value = "";
+  if (BatchGimbalInput) BatchGimbalInput.value = "";
+  UpdateToolsUi();
+}
+
+function NudgeSelectedWaypoints(northMeters, eastMeters) {
+  if (!SelectedIds.size) return;
+  Waypoints.forEach((Wp) => {
+    if (!SelectedIds.has(Wp.Id)) return;
+    const shifted = offsetLatLngByMeters(Wp.Lat, Wp.Lon, northMeters, eastMeters);
+    Wp.Lat = shifted.lat;
+    Wp.Lon = shifted.lon;
+  });
+  RenderAll();
+  PushHistory();
+}
+
+function OffsetSelectedWaypointsByBearing(distanceMeters, bearingDeg) {
+  if (!SelectedIds.size) return;
+  const bearingVal = Number.isFinite(bearingDeg) ? bearingDeg : 0;
+  const rad = (bearingVal * Math.PI) / 180;
+  const northMeters = Math.cos(rad) * distanceMeters;
+  const eastMeters = Math.sin(rad) * distanceMeters;
+  NudgeSelectedWaypoints(northMeters, eastMeters);
+}
+
+function AlignSelectedWaypointsToLine(offsetMeters) {
+  if (!SelectedIds.size) return;
+  if (typeof turf === "undefined" || !turf.nearestPointOnLine) return;
+  const lineFeature = GetAlignLineFeature();
+  if (!lineFeature) return;
+
+  let lineToUse = lineFeature;
+  if (Number.isFinite(offsetMeters) && offsetMeters !== 0 && turf.lineOffset) {
+    const offsetKm = offsetMeters / 1000;
+    lineToUse = turf.lineOffset(lineFeature, offsetKm, { units: "kilometers" });
+  }
+
+  if (!lineToUse) return;
+  Waypoints.forEach((Wp) => {
+    if (!SelectedIds.has(Wp.Id)) return;
+    const pt = turf.nearestPointOnLine(
+      lineToUse,
+      [Wp.Lon, Wp.Lat],
+      { units: "kilometers" }
+    );
+    if (pt && pt.geometry && pt.geometry.coordinates) {
+      Wp.Lon = pt.geometry.coordinates[0];
+      Wp.Lat = pt.geometry.coordinates[1];
+    }
+  });
+
+  RenderAll();
+  PushHistory();
+}
+
+function AlignSelectedWaypointsToPoi() {
+  if (!SelectedIds.size || !SearchMarker) return;
+  const target = SearchMarker.getLatLng();
+  if (!target) return;
+
+  const selected = Waypoints.filter((Wp) => SelectedIds.has(Wp.Id));
+  if (!selected.length) return;
+
+  const centerLat =
+    selected.reduce((sum, Wp) => sum + Wp.Lat, 0) / selected.length;
+  const centerLon =
+    selected.reduce((sum, Wp) => sum + Wp.Lon, 0) / selected.length;
+
+  if (typeof turf !== "undefined" && turf.toMercator && turf.toWgs84) {
+    const targetMerc = turf.toMercator([target.lng, target.lat]);
+    const centerMerc = turf.toMercator([centerLon, centerLat]);
+    const dx = targetMerc[0] - centerMerc[0];
+    const dy = targetMerc[1] - centerMerc[1];
+    selected.forEach((Wp) => {
+      const merc = turf.toMercator([Wp.Lon, Wp.Lat]);
+      const wgs = turf.toWgs84([merc[0] + dx, merc[1] + dy]);
+      Wp.Lat = wgs[1];
+      Wp.Lon = wgs[0];
+    });
+  } else {
+    const dLat = target.lat - centerLat;
+    const dLon = target.lng - centerLon;
+    selected.forEach((Wp) => {
+      Wp.Lat += dLat;
+      Wp.Lon += dLon;
+    });
+  }
+
+  RenderAll();
+  PushHistory();
+}
+
+function NudgeSelectionByDirection(direction) {
+  const stepVal = getNumericInputValue(NudgeStepInput);
+  const stepMeters = ConvertDistanceToMeters(stepVal);
+  if (!Number.isFinite(stepMeters) || stepMeters <= 0) return;
+  let north = 0;
+  let east = 0;
+  if (direction === "north") north = stepMeters;
+  if (direction === "south") north = -stepMeters;
+  if (direction === "east") east = stepMeters;
+  if (direction === "west") east = -stepMeters;
+  NudgeSelectedWaypoints(north, east);
+}
+
+function ApplyOffsetSelectionFromInputs() {
+  const distVal = getNumericInputValue(OffsetDistanceInput);
+  const distMeters = ConvertDistanceToMeters(distVal);
+  if (!Number.isFinite(distMeters) || distMeters <= 0) return;
+  const bearingVal = getNumericInputValue(OffsetBearingInput);
+  OffsetSelectedWaypointsByBearing(distMeters, bearingVal || 0);
+}
+
+function ApplyAlignToLineFromInputs() {
+  const offsetVal = getNumericInputValue(LineOffsetInput);
+  const offsetMeters = convertSignedDistanceToMeters(offsetVal) || 0;
+  AlignSelectedWaypointsToLine(offsetMeters);
 }
 
 function GetSpacingMeters() {
@@ -275,13 +514,16 @@ function applyCoverageModelAtLevel(model, boundaryFeature, levelVal) {
   RemoveWaypointsInsideBoundary(boundaryFeature);
 
   SelectedIds.clear();
+  const newWaypoints = [];
   Res.latLngs.forEach((ll) => {
-    AddWaypoint(ll[0], ll[1], {
+    const wp = AddWaypoint(ll[0], ll[1], {
       selectionMode: "add",
       skipRender: true,
       skipHistory: true,
     });
+    newWaypoints.push(wp);
   });
+  ApplyPathHeadingsFromLatLngs(Res.latLngs, newWaypoints);
 
   if (ShapeResolutionSlider) {
     ShapeResolutionSlider.value = String(Res.levelUsed);
@@ -302,13 +544,17 @@ function GenerateWaypointsFromDrawnShape() {
     const tolerance = Math.max(SpacingMeters * 0.5, 0.1);
     RemoveWaypointsNearLine(ShapeFeature, tolerance);
     SelectedIds.clear();
-    pts.forEach((p) => {
-      AddWaypoint(p[1], p[0], {
+    const latLngs = pts.map((p) => [p[1], p[0]]);
+    const newWaypoints = [];
+    latLngs.forEach((ll) => {
+      const wp = AddWaypoint(ll[0], ll[1], {
         selectionMode: "add",
         skipRender: true,
         skipHistory: true,
       });
+      newWaypoints.push(wp);
     });
+    ApplyPathHeadingsFromLatLngs(latLngs, newWaypoints);
     LastCoverageModel = null;
     LastBoundaryFeature = ShapeFeature;
     RenderAll();
@@ -325,21 +571,21 @@ function GenerateWaypointsFromDrawnShape() {
     const rotDeg = parseFloat(EllipseRotationInput ? EllipseRotationInput.value : "0") || 0;
     const pts = ellipseCircumferenceWaypoints(BoundaryFeature, circSpacing, rotDeg);
     if (!pts.length) return;
-    const ellipseCenter = GetEllipseCenterLatLng(BoundaryFeature);
     RemoveWaypointsInsideBoundary(BoundaryFeature);
     SelectedIds.clear();
-    pts.forEach((p) => {
-      const wp = AddWaypoint(p[1], p[0], {
+    const latLngs = pts.map((p) => [p[1], p[0]]);
+    const newWaypoints = [];
+    latLngs.forEach((ll) => {
+      const wp = AddWaypoint(ll[0], ll[1], {
         selectionMode: "add",
         skipRender: true,
         skipHistory: true,
       });
       wp.Speed = SettingsState.globalSpeed;
       wp.UseGlobalSpeed = true;
-      if (ellipseCenter) {
-        wp.Heading = bearingBetweenPoints({ lat: wp.Lat, lng: wp.Lon }, ellipseCenter);
-      }
+      newWaypoints.push(wp);
     });
+    ApplyPathHeadingsFromLatLngs(latLngs, newWaypoints);
     RenderAll();
     PushHistory();
     return;
@@ -430,6 +676,7 @@ function UpdateToolsUi() {
   const HasShape = DrawnItems && DrawnItems.getLayers().length > 0;
   const SpacingValid = GetSpacingMeters() !== null;
   const ResolutionValid = GetResolutionLevel() !== null;
+  const HasSelection = SelectedIds.size > 0;
   const HasRotationSelection = SelectedIds.size >= 2;
   const AngleValid =
     RotationInput && Number.isFinite(parseFloat(RotationInput.value));
@@ -441,6 +688,24 @@ function UpdateToolsUi() {
   const ShowEllipseOrientation = IsEllipseTool && EllipseMode === "boundary";
   const BoundaryLocked = BoundaryConfirmed;
   const ShowDrawOptions = Boolean(ToolsPanelOpen && ActiveTool);
+  const BatchHasValues = [
+    getNumericInputValue(BatchAltInput),
+    getNumericInputValue(BatchSpeedInput),
+    getNumericInputValue(BatchHeadingInput),
+    getNumericInputValue(BatchGimbalInput),
+  ].some((Val) => Val !== null);
+  const nudgeStepVal = getNumericInputValue(NudgeStepInput);
+  const nudgeStepMeters = ConvertDistanceToMeters(nudgeStepVal);
+  const nudgeValid = Number.isFinite(nudgeStepMeters) && nudgeStepMeters > 0;
+  const offsetDistVal = getNumericInputValue(OffsetDistanceInput);
+  const offsetDistMeters = ConvertDistanceToMeters(offsetDistVal);
+  const offsetValid = Number.isFinite(offsetDistMeters) && offsetDistMeters > 0;
+  const lineFeature = GetAlignLineFeature();
+  const canAlignLine =
+    HasSelection &&
+    lineFeature &&
+    typeof turf !== "undefined" &&
+    typeof turf.nearestPointOnLine === "function";
 
   if (DrawOptionsPanel) {
     DrawOptionsPanel.classList.toggle("visible", ShowDrawOptions);
@@ -491,6 +756,31 @@ function UpdateToolsUi() {
   }
   if (ApplyRotationBtn) {
     ApplyRotationBtn.disabled = !(HasRotationSelection && AngleValid);
+  }
+  if (ApplyBatchEditBtn) {
+    ApplyBatchEditBtn.disabled = !(HasSelection && BatchHasValues);
+  }
+  if (ClearBatchEditBtn) {
+    ClearBatchEditBtn.disabled = !BatchHasValues;
+  }
+  if (NudgeNorthBtn) {
+    const disable = !(HasSelection && nudgeValid);
+    NudgeNorthBtn.disabled = disable;
+    NudgeSouthBtn.disabled = disable;
+    NudgeWestBtn.disabled = disable;
+    NudgeEastBtn.disabled = disable;
+  }
+  if (ApplyOffsetBtn) {
+    ApplyOffsetBtn.disabled = !(HasSelection && offsetValid);
+  }
+  if (AlignToLineBtn) {
+    AlignToLineBtn.disabled = !canAlignLine;
+  }
+  if (AlignToPoiBtn) {
+    AlignToPoiBtn.disabled = !(HasSelection && Boolean(SearchMarker));
+  }
+  if (LineOffsetInput) {
+    LineOffsetInput.disabled = !lineFeature;
   }
   if (DrawLineBtn) {
     DrawLineBtn.classList.toggle("active", IsLineTool);

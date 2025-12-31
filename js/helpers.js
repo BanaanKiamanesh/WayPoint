@@ -71,6 +71,9 @@ function ShowResults(ResultsArr) {
       }
 
       ClearResults();
+      if (typeof UpdateToolsUi === "function") {
+        UpdateToolsUi();
+      }
     });
 
     ResultsDiv.appendChild(Row);
@@ -153,5 +156,28 @@ function UpdateDistanceLabels() {
   if (SpeedLabel) {
     const speedUnit = SettingsState.units === "imperial" ? "mph" : "m/s";
     SpeedLabel.textContent = "Global speed (" + speedUnit + ")";
+  }
+  const BatchAltLabel = document.querySelector('label[for="BatchAltInput"]');
+  if (BatchAltLabel) {
+    BatchAltLabel.textContent = "Altitude (" + UnitLabel + ")";
+  }
+  const BatchSpeedLabel = document.querySelector('label[for="BatchSpeedInput"]');
+  if (BatchSpeedLabel) {
+    const speedUnit = SettingsState.units === "imperial" ? "mph" : "m/s";
+    BatchSpeedLabel.textContent = "Speed (" + speedUnit + ")";
+  }
+  const NudgeStepLabel = document.querySelector('label[for="NudgeStepInput"]');
+  if (NudgeStepLabel) {
+    NudgeStepLabel.textContent = "Step (" + UnitLabel + ")";
+  }
+  const OffsetDistanceLabel = document.querySelector(
+    'label[for="OffsetDistanceInput"]'
+  );
+  if (OffsetDistanceLabel) {
+    OffsetDistanceLabel.textContent = "Distance (" + UnitLabel + ")";
+  }
+  const LineOffsetLabel = document.querySelector('label[for="LineOffsetInput"]');
+  if (LineOffsetLabel) {
+    LineOffsetLabel.textContent = "Line offset (" + UnitLabel + ")";
   }
 }
