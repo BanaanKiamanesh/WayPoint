@@ -420,6 +420,11 @@ if (MapContainer) {
 
 MapObj.on("mousedown", StartMoveSelection);
 MapObj.on("mousedown", StartBoxSelect);
+MapObj.on("zoomend", () => {
+  if (SettingsState.showAltitudeLabels) {
+    RefreshMarkers();
+  }
+});
 
 // Shape tool buttons
 if (GenerateFromShapeBtn) {
@@ -811,6 +816,7 @@ if (UnitRadios && UnitRadios.length) {
         UpdateResolutionDisplay();
         UpdateToolsUi();
         RenderWaypointList();
+        RefreshMarkers();
         PushHistory();
       }
     });
@@ -919,6 +925,7 @@ if (GlobalAltInput) {
         }
       });
       RenderWaypointList();
+      RefreshMarkers();
       PushHistory();
     }
   });
@@ -938,6 +945,15 @@ if (GlobalSpeedInput) {
       RenderWaypointList();
       PushHistory();
     }
+  });
+}
+
+if (ShowAltLabelsToggle) {
+  ShowAltLabelsToggle.checked = SettingsState.showAltitudeLabels;
+  ShowAltLabelsToggle.addEventListener("change", (Ev) => {
+    SettingsState.showAltitudeLabels = Boolean(Ev.target.checked);
+    RefreshMarkers();
+    PushHistory();
   });
 }
 

@@ -79,6 +79,10 @@ function ApplySnapshot(State) {
     State.settings && Number.isFinite(State.settings.globalSpeed)
       ? State.settings.globalSpeed
       : DEFAULT_SPEED;
+  SettingsState.showAltitudeLabels =
+    State.settings && typeof State.settings.showAltitudeLabels === "boolean"
+      ? State.settings.showAltitudeLabels
+      : true;
 
   if (UnitRadios && UnitRadios.length) {
     UnitRadios.forEach((El) => {
@@ -87,6 +91,9 @@ function ApplySnapshot(State) {
   }
   if (GlobalAltInput) GlobalAltInput.value = SettingsState.globalAlt;
   if (GlobalSpeedInput) GlobalSpeedInput.value = SettingsState.globalSpeed;
+  if (ShowAltLabelsToggle) {
+    ShowAltLabelsToggle.checked = SettingsState.showAltitudeLabels;
+  }
 
   if (ShapeSpacingInput && State.shapeSpacingValue !== null) {
     ShapeSpacingInput.value = State.shapeSpacingValue;

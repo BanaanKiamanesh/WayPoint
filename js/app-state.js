@@ -216,6 +216,7 @@ const ClearAllWaypointsBtn = document.getElementById("ClearAllWaypointsBtn");
 const UnitRadios = document.querySelectorAll('input[name="Units"]');
 const GlobalAltInput = document.getElementById("GlobalAltInput");
 const GlobalSpeedInput = document.getElementById("GlobalSpeedInput");
+const ShowAltLabelsToggle = document.getElementById("ShowAltLabelsToggle");
 const ShapeSpacingInput = document.getElementById("ShapeSpacingInput");
 const ShapeResolutionSlider = document.getElementById("ShapeResolutionSlider");
 const ShapeResolutionValue = document.getElementById("ShapeResolutionValue");
@@ -307,6 +308,7 @@ const SettingsState = {
   units: "metric",
   globalAlt: DEFAULT_ALT,
   globalSpeed: DEFAULT_SPEED,
+  showAltitudeLabels: true,
 };
 const METERS_PER_FOOT = 0.3048;
 const ELLIPSE_STYLE = {

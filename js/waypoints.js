@@ -70,9 +70,12 @@ function PasteCopiedWaypoints() {
   PushHistory();
 }
 
-function MarkerIcon(Label, IsSelected, HeadingDeg) {
+function MarkerIcon(Label, IsSelected, HeadingDeg, AltLabel) {
   const HeadingNum = parseFloat(HeadingDeg);
   const Heading = Number.isFinite(HeadingNum) ? HeadingNum : 0;
+  const AltHtml = AltLabel
+    ? '<div class="wpAltLabel">' + EscapeHtml(AltLabel) + "</div>"
+    : "";
   return L.divIcon({
     className: "wpMarker" + (IsSelected ? " selected" : ""),
     html:
@@ -85,6 +88,7 @@ function MarkerIcon(Label, IsSelected, HeadingDeg) {
       '<div class="wpMarkerLabel">' +
       Label +
       "</div>" +
+      AltHtml +
       "</div>",
     iconSize: [34, 34],
     iconAnchor: [17, 17],
@@ -94,6 +98,24 @@ function MarkerIcon(Label, IsSelected, HeadingDeg) {
 function UpdatePolyline() {
   const LatLngs = getDisplayPathLatLngs();
   WaypointLine.setLatLngs(LatLngs);
+}
+
+const ALT_LABEL_MIN_ZOOM = 14;
+const ALT_LABEL_MAX_WAYPOINTS = 350;
+
+function getAltitudeLabelText(Wp) {
+  const altVal = parseFloat(Wp.Alt);
+  if (!Number.isFinite(altVal)) return "";
+  const unit = SettingsState.units === "imperial" ? "ft" : "m";
+  const rounded = RoundNumber(altVal, 0);
+  return rounded + unit;
+}
+
+function shouldShowAltitudeLabel(isSelected, zoom, totalCount) {
+  if (!SettingsState.showAltitudeLabels) return false;
+  if (!Number.isFinite(zoom) || zoom < ALT_LABEL_MIN_ZOOM) return false;
+  if (totalCount <= ALT_LABEL_MAX_WAYPOINTS) return true;
+  return isSelected;
 }
 
 function ClearWaypointDragIndicators() {
@@ -298,10 +320,15 @@ function computeTotalDistanceMeters() {
 
 function RefreshMarkers() {
   const Seen = new Set();
+  const totalCount = Waypoints.length;
+  const zoom = MapObj && typeof MapObj.getZoom === "function" ? MapObj.getZoom() : null;
   Waypoints.forEach((Wp, Idx) => {
     const IsSelected = SelectedIds.has(Wp.Id);
     let Marker = MarkerById.get(Wp.Id);
-    const Icon = MarkerIcon(Idx + 1, IsSelected, Wp.Heading);
+    const AltLabel = shouldShowAltitudeLabel(IsSelected, zoom, totalCount)
+      ? getAltitudeLabelText(Wp)
+      : "";
+    const Icon = MarkerIcon(Idx + 1, IsSelected, Wp.Heading, AltLabel);
 
     if (!Marker) {
       Marker = L.marker([Wp.Lat, Wp.Lon], {
@@ -742,6 +769,9 @@ function RenderWaypointList() {
             if (Field.key === "Speed") Wp.Speed = SettingsState.globalSpeed;
           }
           RenderWaypointList();
+          if (Field.key === "Alt") {
+            RefreshMarkers();
+          }
           PushHistory();
         });
 
@@ -772,7 +802,7 @@ function RenderWaypointList() {
           Wp[Field.key] = ValNum;
         }
         RenderWaypointList();
-        if (Field.key === "Heading") {
+        if (Field.key === "Heading" || Field.key === "Alt") {
           RefreshMarkers();
         }
         PushHistory();

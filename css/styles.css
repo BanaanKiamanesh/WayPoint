@@ -815,6 +815,23 @@ body {
   pointer-events: none;
 }
 
+.wpAltLabel {
+  position: absolute;
+  top: -12px;
+  right: -14px;
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transform: rotate(calc(-1 * var(--heading, 0deg)));
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
 .topbar {
   position: absolute;
   top: 12px;
