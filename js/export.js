@@ -126,10 +126,14 @@ function buildWpmlMissionConfig(indent, takeoffRefPoint, takeoffRefPointAgl) {
   const globalSpeedMs = getGlobalSpeedMs();
   const safeHeight = clampNumber(DJI_DEFAULT_SAFE_HEIGHT_M, 1.2, 1500, 20);
   const rthHeight = clampNumber(DJI_DEFAULT_RTH_HEIGHT_M, 2, 1500, 100);
+  const finishAction =
+    typeof GetMissionFinishActionValue === "function"
+      ? GetMissionFinishActionValue()
+      : "hover";
   const lines = [];
   lines.push(indent + "<wpml:missionConfig>");
   lines.push(indent + "  <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>");
-  lines.push(indent + "  <wpml:finishAction>goHome</wpml:finishAction>");
+  lines.push(indent + "  <wpml:finishAction>" + finishAction + "</wpml:finishAction>");
   lines.push(indent + "  <wpml:exitOnRCLost>goContinue</wpml:exitOnRCLost>");
   lines.push(indent + "  <wpml:executeRCLostAction>hover</wpml:executeRCLostAction>");
   lines.push(
@@ -662,6 +666,24 @@ function getWpmlPathMode(templateText, waylinesText) {
   return null;
 }
 
+function getWpmlFinishActionFromDoc(xmlDoc) {
+  if (!xmlDoc) return null;
+  const raw = wpmlFindFirstText(xmlDoc, "finishAction");
+  if (typeof NormalizeMissionFinishAction === "function") {
+    return NormalizeMissionFinishAction(raw);
+  }
+  return raw ? String(raw).trim() : null;
+}
+
+function getWpmlFinishAction(templateText, waylinesText) {
+  const templateDoc = parseXmlDocument(templateText);
+  const waylinesDoc = parseXmlDocument(waylinesText);
+  const templateAction = getWpmlFinishActionFromDoc(templateDoc);
+  if (templateAction) return templateAction;
+  const waylinesAction = getWpmlFinishActionFromDoc(waylinesDoc);
+  return waylinesAction;
+}
+
 function normalizeCsvHeaderName(value) {
   return String(value || "")
     .trim()
@@ -1008,6 +1030,7 @@ async function ImportWaypointsFromFile(file) {
   let kmlText = "";
   let coords = [];
   let pathMode = null;
+  let finishAction = null;
 
   if (name.endsWith(".kmz")) {
     if (typeof JSZip === "undefined") {
@@ -1026,6 +1049,7 @@ async function ImportWaypointsFromFile(file) {
     const wpmlText = wpmlEntry ? await wpmlEntry.async("text") : "";
     const templateText = templateEntry ? await templateEntry.async("text") : "";
     pathMode = getWpmlPathMode(templateText, wpmlText);
+    finishAction = getWpmlFinishAction(templateText, wpmlText);
 
     if (wpmlText) {
       kmlText = wpmlText;
@@ -1049,6 +1073,7 @@ async function ImportWaypointsFromFile(file) {
     kmlText = await file.text();
     coords = extractWaypointsFromKml(kmlText);
     pathMode = getWpmlPathMode(kmlText, "");
+    finishAction = getWpmlFinishAction(kmlText, "");
   } else if (name.endsWith(".csv")) {
     const csvText = await file.text();
     coords = extractWaypointsFromCsv(csvText);
@@ -1060,6 +1085,12 @@ async function ImportWaypointsFromFile(file) {
   if (!coords.length) {
     alert("No waypoints found in file.");
     return;
+  }
+  if (finishAction) {
+    SettingsState.missionFinishAction = finishAction;
+    if (MissionFinishSelect) {
+      MissionFinishSelect.value = finishAction;
+    }
   }
   applyImportedWaypoints(coords, pathMode);
 }

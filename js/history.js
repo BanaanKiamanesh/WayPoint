@@ -95,6 +95,10 @@ function ApplySnapshot(State) {
     State.settings && Number.isFinite(State.settings.terrainMaxAlt)
       ? State.settings.terrainMaxAlt
       : null;
+  SettingsState.missionFinishAction =
+    State.settings && State.settings.missionFinishAction
+      ? NormalizeMissionFinishAction(State.settings.missionFinishAction) || "hover"
+      : "hover";
 
   if (UnitRadios && UnitRadios.length) {
     UnitRadios.forEach((El) => {
@@ -118,6 +122,9 @@ function ApplySnapshot(State) {
     TerrainMaxAltInput.value = Number.isFinite(SettingsState.terrainMaxAlt)
       ? String(SettingsState.terrainMaxAlt)
       : "";
+  }
+  if (MissionFinishSelect) {
+    MissionFinishSelect.value = SettingsState.missionFinishAction;
   }
 
   if (ShapeSpacingInput && State.shapeSpacingValue !== null) {

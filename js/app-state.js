@@ -249,6 +249,7 @@ const ReverseWaypointsBtn = document.getElementById("ReverseWaypointsBtn");
 const TerrainCorrectionToggle = document.getElementById("TerrainCorrectionToggle");
 const TerrainTargetInput = document.getElementById("TerrainTargetInput");
 const TerrainMaxAltInput = document.getElementById("TerrainMaxAltInput");
+const MissionFinishSelect = document.getElementById("MissionFinishSelect");
 const ConfirmShapeBtn = document.getElementById("ConfirmShapeBtn");
 const LeftControlsWrap = document.getElementById("LeftControls");
 const ToggleWaypointsBtn = document.getElementById("ToggleWaypointsBtn");
@@ -316,6 +317,7 @@ const SettingsState = {
   terrainCorrectionEnabled: false,
   terrainTargetAgl: DEFAULT_ALT,
   terrainMaxAlt: null,
+  missionFinishAction: "hover",
 };
 const METERS_PER_FOOT = 0.3048;
 const ELLIPSE_STYLE = {

@@ -980,6 +980,18 @@ if (ShowAltLabelsToggle) {
   });
 }
 
+if (MissionFinishSelect) {
+  SettingsState.missionFinishAction =
+    NormalizeMissionFinishAction(SettingsState.missionFinishAction) || "hover";
+  MissionFinishSelect.value = SettingsState.missionFinishAction;
+  MissionFinishSelect.addEventListener("change", (Ev) => {
+    SettingsState.missionFinishAction =
+      NormalizeMissionFinishAction(Ev.target.value) || "hover";
+    MissionFinishSelect.value = SettingsState.missionFinishAction;
+    PushHistory();
+  });
+}
+
 if (TerrainCorrectionToggle) {
   TerrainCorrectionToggle.checked = SettingsState.terrainCorrectionEnabled;
   TerrainCorrectionToggle.addEventListener("change", (Ev) => {

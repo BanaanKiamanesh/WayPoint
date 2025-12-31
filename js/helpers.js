@@ -134,6 +134,32 @@ function ConvertSpeedBetweenUnits(ValueNum, FromUnits, ToUnits) {
   return ValueNum;
 }
 
+function NormalizeMissionFinishAction(Value) {
+  if (Value === null || Value === undefined) return null;
+  const raw = String(Value).trim();
+  if (!raw) return null;
+  const clean = raw.toLowerCase().replace(/[^a-z]/g, "");
+  if (clean === "hover" || clean === "none" || clean === "noaction") {
+    return "hover";
+  }
+  if (
+    clean === "gohome" ||
+    clean === "returnhome" ||
+    clean === "returntohome" ||
+    clean === "rth"
+  ) {
+    return "goHome";
+  }
+  if (clean === "autoland" || clean === "land") {
+    return "autoLand";
+  }
+  return null;
+}
+
+function GetMissionFinishActionValue() {
+  return NormalizeMissionFinishAction(SettingsState.missionFinishAction) || "hover";
+}
+
 function UpdateDistanceLabels() {
   const UnitLabel = GetDistanceUnitLabel();
   const SpacingLabel = document.querySelector('label[for="ShapeSpacingInput"]');

@@ -353,6 +353,21 @@
               <input id="TerrainMaxAltInput" type="number" min="0" step="1" placeholder="-" />
             </div>
           </div>
+          <div class="settingsDivider"></div>
+          <div class="toolSection">
+            <div class="toolTitle">Additional settings</div>
+            <div class="settingsHint">
+              What should the drone do when the mission is completed?
+            </div>
+            <div class="settingsRow inlineRow">
+              <label class="settingsLabel" for="MissionFinishSelect">Action on completion</label>
+              <select id="MissionFinishSelect">
+                <option value="hover" selected>None (Hover)</option>
+                <option value="goHome">Return to home</option>
+                <option value="autoLand">Land</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
       <div class="exportPanel">
@@ -537,15 +552,15 @@
     <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-    <script src="js/app-state.js?v=5"></script>
-    <script src="js/helpers.js?v=3"></script>
-    <script src="js/terrain.js?v=1"></script>
+      <script src="js/app-state.js?v=6"></script>
+      <script src="js/helpers.js?v=4"></script>
+      <script src="js/terrain.js?v=1"></script>
     <script src="js/ellipse-tools.js?v=2"></script>
     <script src="js/algorithms.js?v=2"></script>
     <script src="js/waypoints.js?v=4"></script>
-    <script src="js/export.js?v=4"></script>
-    <script src="js/ui.js?v=4"></script>
-    <script src="js/history.js?v=4"></script>
-    <script src="js/main.js?v=5"></script>
+      <script src="js/export.js?v=5"></script>
+      <script src="js/ui.js?v=4"></script>
+      <script src="js/history.js?v=5"></script>
+      <script src="js/main.js?v=6"></script>
   </body>
 </html>
