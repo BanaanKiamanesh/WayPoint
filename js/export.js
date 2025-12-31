@@ -205,7 +205,7 @@ function buildWpmlTemplateKml() {
     '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="' + WPML_NS + '">'
   );
   lines.push("  <Document>");
-  lines.push("    <wpml:author>Waypoint KMZ Planner</wpml:author>");
+  lines.push("    <wpml:author>Waypoint Planner</wpml:author>");
   lines.push("    <wpml:createTime>" + now + "</wpml:createTime>");
   lines.push("    <wpml:updateTime>" + now + "</wpml:updateTime>");
   lines.push(buildWpmlMissionConfig("    ", takeoffPoint, 0));
