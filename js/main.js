@@ -565,6 +565,8 @@ if (ExportFormatSelect) {
 }
 if (ExportPathModeSelect) {
   ExportPathModeSelect.addEventListener("change", () => {
+    PathDisplayMode = ExportPathModeSelect.value === "curved" ? "curved" : "straight";
+    RenderAll();
     PushHistory();
   });
 }

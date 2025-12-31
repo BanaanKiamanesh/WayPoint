@@ -86,8 +86,92 @@ function MarkerIcon(Label, IsSelected, HeadingDeg) {
 }
 
 function UpdatePolyline() {
-  const LatLngs = Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
+  const LatLngs = getDisplayPathLatLngs();
   WaypointLine.setLatLngs(LatLngs);
+}
+
+const CURVE_SAMPLE_SPACING_M = 25;
+const CURVE_SAMPLE_MIN_STEPS = 6;
+const CURVE_SAMPLE_MAX_STEPS = 60;
+const CURVE_HANDLE_SCALE = 3.0;
+const CURVE_HANDLE_MAX_RATIO = 0.7;
+
+function getDisplayPathLatLngs() {
+  if (!Waypoints.length) return [];
+  if (PathDisplayMode !== "curved" || Waypoints.length < 3) {
+    return Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
+  }
+  if (typeof turf === "undefined" || !turf.toMercator || !turf.toWgs84) {
+    return Waypoints.map((Wp) => [Wp.Lat, Wp.Lon]);
+  }
+  return buildCurvedPathLatLngs();
+}
+
+function cubicBezier(a, b, c, d, t) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const mt3 = mt2 * mt;
+  return mt3 * a + 3 * mt2 * t * b + 3 * mt * t2 * c + t3 * d;
+}
+
+function clampHandle(vec, maxLen) {
+  const len = Math.hypot(vec[0], vec[1]);
+  if (!Number.isFinite(len) || len <= 0 || len <= maxLen) return vec;
+  const scale = maxLen / len;
+  return [vec[0] * scale, vec[1] * scale];
+}
+
+function buildBezierControls(p0, p1, p2, p3) {
+  const k = CURVE_HANDLE_SCALE / 6;
+  const segLen = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+  const maxHandle = Number.isFinite(segLen) ? segLen * CURVE_HANDLE_MAX_RATIO : 0;
+  let v1 = [(p2[0] - p0[0]) * k, (p2[1] - p0[1]) * k];
+  let v2 = [(p3[0] - p1[0]) * k, (p3[1] - p1[1]) * k];
+
+  if (maxHandle > 0) {
+    v1 = clampHandle(v1, maxHandle);
+    v2 = clampHandle(v2, maxHandle);
+  }
+
+  return {
+    c1: [p1[0] + v1[0], p1[1] + v1[1]],
+    c2: [p2[0] - v2[0], p2[1] - v2[1]],
+    segLen: segLen,
+  };
+}
+
+function buildCurvedPathLatLngs() {
+  const pts = Waypoints.map((Wp) => turf.toMercator([Wp.Lon, Wp.Lat]));
+  const out = [];
+
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || pts[i + 1];
+    const controls = buildBezierControls(p0, p1, p2, p3);
+    const segLen = controls.segLen;
+    const rawSteps = Number.isFinite(segLen)
+      ? Math.round(segLen / CURVE_SAMPLE_SPACING_M)
+      : CURVE_SAMPLE_MIN_STEPS;
+    const steps = Math.min(
+      CURVE_SAMPLE_MAX_STEPS,
+      Math.max(CURVE_SAMPLE_MIN_STEPS, rawSteps)
+    );
+
+    for (let s = 0; s <= steps; s += 1) {
+      if (i > 0 && s === 0) continue;
+      const t = steps === 0 ? 0 : s / steps;
+      const x = cubicBezier(p1[0], controls.c1[0], controls.c2[0], p2[0], t);
+      const y = cubicBezier(p1[1], controls.c1[1], controls.c2[1], p2[1], t);
+      const ll = turf.toWgs84([x, y]);
+      out.push([ll[1], ll[0]]);
+    }
+  }
+
+  return out;
 }
 
 function FieldLabel(Key) {
@@ -108,13 +192,14 @@ function FieldLabel(Key) {
 
 function formatDurationSeconds(sec) {
   if (!Number.isFinite(sec) || sec <= 0) return "~0s";
-  const hours = Math.floor(sec / 3600);
-  const minutes = Math.floor((sec % 3600) / 60);
-  const seconds = Math.floor(sec % 60);
+  const totalSec = Math.round(sec);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
   const parts = [];
   if (hours > 0) parts.push(hours + "h");
-  if (minutes > 0) parts.push(minutes + "m");
-  if (hours === 0 && minutes === 0) parts.push(seconds + "s");
+  if (hours > 0 || minutes > 0) parts.push(minutes + "m");
+  parts.push(seconds + "s");
   return "~" + parts.join(" ");
 }
 
@@ -133,12 +218,14 @@ function computeTravelTimeSeconds() {
 }
 
 function computeTotalDistanceMeters() {
-  if (!turf || Waypoints.length < 2) return 0;
+  if (!turf) return 0;
+  const path = getDisplayPathLatLngs();
+  if (path.length < 2) return 0;
   let total = 0;
-  for (let i = 0; i < Waypoints.length - 1; i++) {
-    const a = Waypoints[i];
-    const b = Waypoints[i + 1];
-    total += turf.distance([a.Lon, a.Lat], [b.Lon, b.Lat], { units: "kilometers" }) * 1000;
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    total += turf.distance([a[1], a[0]], [b[1], b[0]], { units: "kilometers" }) * 1000;
   }
   return total;
 }

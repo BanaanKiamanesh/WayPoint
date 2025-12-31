@@ -24,7 +24,6 @@ const DJI_DEFAULT_PAYLOAD_ENUM = 66; // M3E camera (best-effort default)
 const DJI_DEFAULT_PAYLOAD_POS = 0;
 const DJI_DEFAULT_RTH_HEIGHT_M = 100;
 const DJI_DEFAULT_SAFE_HEIGHT_M = 20;
-const DJI_DEFAULT_TURN_DAMPING_DIST_M = 0.2;
 
 function clampNumber(val, min, max, fallback) {
   const num = Number(val);
@@ -76,10 +75,19 @@ function getWaypointSpeedMs(Wp, globalSpeedMs) {
 function getWpmlTurnSettings() {
   const isStraight =
     ExportPathModeSelect && ExportPathModeSelect.value === "straight";
+  if (isStraight) {
+    return {
+      turnMode: "toPointAndStopWithDiscontinuityCurvature",
+      useStraightLine: null,
+      includeUseStraightLine: false,
+      turnDampingDist: null,
+    };
+  }
   return {
     turnMode: "toPointAndStopWithContinuityCurvature",
-    useStraightLine: isStraight ? 1 : 0,
-    turnDampingDist: isStraight ? 0 : DJI_DEFAULT_TURN_DAMPING_DIST_M,
+    useStraightLine: 0,
+    includeUseStraightLine: true,
+    turnDampingDist: null,
   };
 }
 
@@ -177,7 +185,7 @@ function buildWpmlTemplateKml() {
   const now = Date.now();
   const globalAltMeters = getGlobalAltMeters();
   const globalSpeedMs = getGlobalSpeedMs();
-  const { turnMode, useStraightLine, turnDampingDist } = getWpmlTurnSettings();
+  const { turnMode, useStraightLine, includeUseStraightLine } = getWpmlTurnSettings();
   const takeoffPoint =
     Waypoints.length > 0
       ? [
@@ -235,9 +243,13 @@ function buildWpmlTemplateKml() {
       turnMode +
       "</wpml:globalWaypointTurnMode>"
   );
-  lines.push(
-    "      <wpml:globalUseStraightLine>" + useStraightLine + "</wpml:globalUseStraightLine>"
-  );
+  if (includeUseStraightLine) {
+    lines.push(
+      "      <wpml:globalUseStraightLine>" +
+        useStraightLine +
+        "</wpml:globalUseStraightLine>"
+    );
+  }
   lines.push(
     "      <wpml:globalHeight>" +
       formatWpmlNumber(globalAltMeters, 1) +
@@ -278,9 +290,6 @@ function buildWpmlTemplateKml() {
     lines.push(
       "        <wpml:gimbalPitchAngle>" + formatWpmlNumber(gimbalPitch, 1) + "</wpml:gimbalPitchAngle>"
     );
-    lines.push(buildWpmlHeadingParam("        "));
-    lines.push(buildWpmlTurnParam("        ", turnMode, turnDampingDist));
-    lines.push("        <wpml:useStraightLine>" + useStraightLine + "</wpml:useStraightLine>");
     lines.push("      </Placemark>");
   });
 
@@ -293,7 +302,8 @@ function buildWpmlTemplateKml() {
 function buildWpmlWaylines() {
   const globalAltMeters = getGlobalAltMeters();
   const globalSpeedMs = getGlobalSpeedMs();
-  const { turnMode, useStraightLine, turnDampingDist } = getWpmlTurnSettings();
+  const { turnMode, useStraightLine, includeUseStraightLine, turnDampingDist } =
+    getWpmlTurnSettings();
   const takeoffPoint =
     Waypoints.length > 0
       ? [
@@ -342,7 +352,11 @@ function buildWpmlWaylines() {
     );
     lines.push(buildWpmlHeadingParam("        "));
     lines.push(buildWpmlTurnParam("        ", turnMode, turnDampingDist));
-    lines.push("        <wpml:useStraightLine>" + useStraightLine + "</wpml:useStraightLine>");
+    if (includeUseStraightLine) {
+      lines.push(
+        "        <wpml:useStraightLine>" + useStraightLine + "</wpml:useStraightLine>"
+      );
+    }
     lines.push("      </Placemark>");
   });
 
@@ -536,6 +550,111 @@ function extractWaypointsFromKml(kmlText) {
     coords.push(...parseKmlCoordinateText(coordNodes[i].textContent || ""));
   }
   return coords;
+}
+
+function wpmlMatchesLocalName(Node, Name) {
+  if (!Node) return false;
+  if (Node.localName === Name) return true;
+  const nodeName = Node.nodeName || "";
+  return nodeName === Name || nodeName.endsWith(":" + Name);
+}
+
+function wpmlFindFirstText(root, name) {
+  if (!root) return null;
+  const nodes = root.getElementsByTagName("*");
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (wpmlMatchesLocalName(node, name)) {
+      const text = node.textContent;
+      return text ? text.trim() : null;
+    }
+  }
+  return null;
+}
+
+function parseWpmlBoolean(text) {
+  if (text === null || text === undefined) return null;
+  const norm = String(text).trim().toLowerCase();
+  if (norm === "1" || norm === "true") return true;
+  if (norm === "0" || norm === "false") return false;
+  return null;
+}
+
+function resolveWpmlPathMode(turnMode, useStraightLine) {
+  const mode = String(turnMode || "").trim();
+  if (!mode) {
+    if (useStraightLine === true) return "straight";
+    if (useStraightLine === false) return "curved";
+    return null;
+  }
+  if (mode === "toPointAndStopWithDiscontinuityCurvature") {
+    return "straight";
+  }
+  if (mode === "coordinateTurn") {
+    return "curved";
+  }
+  if (
+    mode === "toPointAndStopWithContinuityCurvature" ||
+    mode === "toPointAndPassWithContinuityCurvature"
+  ) {
+    if (useStraightLine === true) return "straight";
+    if (useStraightLine === false) return "curved";
+    return "curved";
+  }
+  return null;
+}
+
+function getWpmlPathModeFromDoc(xmlDoc) {
+  if (!xmlDoc) return null;
+  let sawCurved = false;
+  let sawStraight = false;
+
+  const folders = xmlDoc.getElementsByTagName("Folder");
+  const targets = folders.length ? folders : [xmlDoc];
+  for (let i = 0; i < targets.length; i++) {
+    const folder = targets[i];
+    const globalTurnMode = wpmlFindFirstText(folder, "globalWaypointTurnMode");
+    const globalUseStraight = parseWpmlBoolean(
+      wpmlFindFirstText(folder, "globalUseStraightLine")
+    );
+    const globalMode = resolveWpmlPathMode(globalTurnMode, globalUseStraight);
+    if (globalMode === "curved") sawCurved = true;
+    if (globalMode === "straight") sawStraight = true;
+
+    const placemarks = folder.getElementsByTagName("Placemark");
+    for (let j = 0; j < placemarks.length; j++) {
+      const placemark = placemarks[j];
+      const turnMode = wpmlFindFirstText(placemark, "waypointTurnMode");
+      const useStraight = parseWpmlBoolean(
+        wpmlFindFirstText(placemark, "useStraightLine")
+      );
+      const localMode = resolveWpmlPathMode(turnMode, useStraight);
+      if (localMode === "curved") sawCurved = true;
+      if (localMode === "straight") sawStraight = true;
+    }
+  }
+
+  if (sawCurved) return "curved";
+  if (sawStraight) return "straight";
+  return null;
+}
+
+function parseXmlDocument(text) {
+  if (!text) return null;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) return null;
+  return doc;
+}
+
+function getWpmlPathMode(templateText, waylinesText) {
+  const templateDoc = parseXmlDocument(templateText);
+  const waylinesDoc = parseXmlDocument(waylinesText);
+  const templateMode = getWpmlPathModeFromDoc(templateDoc);
+  const waylinesMode = getWpmlPathModeFromDoc(waylinesDoc);
+  if (templateMode === "curved" || waylinesMode === "curved") return "curved";
+  if (templateMode === "straight" || waylinesMode === "straight") return "straight";
+  return null;
 }
 
 function normalizeCsvHeaderName(value) {
@@ -735,11 +854,19 @@ function focusMapOnImported(coords) {
   MapObj.fitBounds(bounds.pad(0.15));
 }
 
-function applyImportedWaypoints(coords) {
+function applyImportedWaypoints(coords, pathMode) {
   if (!coords || !coords.length) return;
   const shouldReplace = !Waypoints.length || window.confirm("Replace existing waypoints?");
   if (shouldReplace) {
     clearWaypointsForImport();
+  }
+  if (pathMode) {
+    PathDisplayMode = pathMode;
+  } else if (shouldReplace) {
+    PathDisplayMode = "straight";
+  }
+  if (shouldReplace && ExportPathModeSelect) {
+    ExportPathModeSelect.value = pathMode ? pathMode : "straight";
   }
 
   SelectedIds.clear();
@@ -798,6 +925,7 @@ async function ImportWaypointsFromFile(file) {
   const name = (file.name || "").toLowerCase();
   let kmlText = "";
   let coords = [];
+  let pathMode = null;
 
   if (name.endsWith(".kmz")) {
     if (typeof JSZip === "undefined") {
@@ -805,18 +933,40 @@ async function ImportWaypointsFromFile(file) {
       return;
     }
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
-    const kmlFiles = zip.file(/\.kml$/i);
-    if (!kmlFiles || !kmlFiles.length) {
-      alert("No KML file found in KMZ.");
-      return;
+    const wpmlFiles = zip.file(/\.wpml$/i);
+    const templateFiles = zip.file(/template\.kml$/i);
+    const wpmlEntry =
+      (wpmlFiles && wpmlFiles.find((entry) => /waylines\.wpml$/i.test(entry.name))) ||
+      (wpmlFiles && wpmlFiles[0]);
+    const templateEntry =
+      (templateFiles && templateFiles.find((entry) => /template\.kml$/i.test(entry.name))) ||
+      (templateFiles && templateFiles[0]);
+    const wpmlText = wpmlEntry ? await wpmlEntry.async("text") : "";
+    const templateText = templateEntry ? await templateEntry.async("text") : "";
+    pathMode = getWpmlPathMode(templateText, wpmlText);
+
+    if (wpmlText) {
+      kmlText = wpmlText;
+      coords = extractWaypointsFromKml(kmlText);
+    } else if (templateText) {
+      kmlText = templateText;
+      coords = extractWaypointsFromKml(kmlText);
+    } else {
+      const kmlFiles = zip.file(/\.kml$/i);
+      if (!kmlFiles || !kmlFiles.length) {
+        alert("No KML file found in KMZ.");
+        return;
+      }
+      const docKml =
+        kmlFiles.find((entry) => entry.name.toLowerCase().endsWith("doc.kml")) ||
+        kmlFiles[0];
+      kmlText = await docKml.async("text");
+      coords = extractWaypointsFromKml(kmlText);
     }
-    const docKml =
-      kmlFiles.find((entry) => entry.name.toLowerCase().endsWith("doc.kml")) || kmlFiles[0];
-    kmlText = await docKml.async("text");
-    coords = extractWaypointsFromKml(kmlText);
   } else if (name.endsWith(".kml")) {
     kmlText = await file.text();
     coords = extractWaypointsFromKml(kmlText);
+    pathMode = getWpmlPathMode(kmlText, "");
   } else if (name.endsWith(".csv")) {
     const csvText = await file.text();
     coords = extractWaypointsFromCsv(csvText);
@@ -829,5 +979,5 @@ async function ImportWaypointsFromFile(file) {
     alert("No waypoints found in file.");
     return;
   }
-  applyImportedWaypoints(coords);
+  applyImportedWaypoints(coords, pathMode);
 }

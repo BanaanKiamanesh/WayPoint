@@ -274,6 +274,7 @@ let EllipseState = null;
 let EllipseMode = "boundary"; // boundary | circumference
 let PolygonOrientation = "auto";
 let EllipseBoundaryOrientation = "auto";
+let PathDisplayMode = "straight"; // straight | curved
 const WaypointLine = L.polyline([], {
   color: "#4db3ff",
   weight: 3,

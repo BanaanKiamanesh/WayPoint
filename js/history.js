@@ -59,6 +59,7 @@ function SnapshotState() {
     rotationValue: RotationInput ? RotationInput.value : null,
     exportFormatValue: ExportFormatSelect ? ExportFormatSelect.value : null,
     exportPathModeValue: ExportPathModeSelect ? ExportPathModeSelect.value : null,
+    pathDisplayMode: PathDisplayMode,
   };
 }
 
@@ -117,6 +118,7 @@ function ApplySnapshot(State) {
   if (ExportPathModeSelect && State.exportPathModeValue !== null) {
     ExportPathModeSelect.value = State.exportPathModeValue;
   }
+  PathDisplayMode = State.pathDisplayMode || "straight";
 
   LeftPanelOpen = Boolean(State.leftPanelOpen);
   ActiveLeftPane = State.activeLeftPane || "waypoints";
