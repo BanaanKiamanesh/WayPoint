@@ -5,6 +5,8 @@
 // - For production, consider your own hosted geocoder or a provider with an API key.
 
 let LastSearchTs = 0;
+const InfoTabButtons = document.querySelectorAll("[data-info-tab]");
+const InfoTabPanels = document.querySelectorAll("[data-info-panel]");
 
 async function RunSearch() {
   const QueryText = (SearchInput.value || "").trim();
@@ -48,6 +50,44 @@ async function RunSearch() {
   }
 }
 
+function CloseInfoOverlay() {
+  if (!InfoPanelOpen) return;
+  InfoPanelOpen = false;
+  UpdateInfoOverlayUi();
+}
+
+function OpenInfoOverlay() {
+  if (InfoPanelOpen) return;
+  InfoPanelOpen = true;
+  ToolsPanelOpen = false;
+  ManipulatePanelOpen = false;
+  ExportPanelOpen = false;
+  UpdateRightPanelUi();
+  UpdateToolsUi();
+  UpdateInfoOverlayUi();
+}
+
+function ToggleInfoOverlay() {
+  if (InfoPanelOpen) {
+    CloseInfoOverlay();
+  } else {
+    OpenInfoOverlay();
+  }
+}
+
+function SetInfoTab(tabKey) {
+  if (!tabKey) return;
+  InfoTabButtons.forEach((Btn) => {
+    const isActive = Btn.dataset.infoTab === tabKey;
+    Btn.classList.toggle("active", isActive);
+    Btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  InfoTabPanels.forEach((Panel) => {
+    const isActive = Panel.dataset.infoPanel === tabKey;
+    Panel.classList.toggle("active", isActive);
+  });
+}
+
 // ----- Wire up events -----
 SearchBtn.addEventListener("click", RunSearch);
 
@@ -64,6 +104,14 @@ SearchInput.addEventListener("keydown", (Ev) => {
 document.addEventListener("keydown", (Ev) => {
   const key = Ev.key || "";
   const keyLower = (Ev.key || "").toLowerCase();
+  if (InfoPanelOpen) {
+    const isEscape = key === "Escape" || key === "Esc";
+    if (isEscape) {
+      Ev.preventDefault();
+      CloseInfoOverlay();
+    }
+    return;
+  }
   const isMod = Ev.ctrlKey || Ev.metaKey;
   const isUndo = isMod && keyLower === "z" && !Ev.shiftKey;
   const isRedo = isMod && (keyLower === "y" || (keyLower === "z" && Ev.shiftKey));
@@ -710,6 +758,34 @@ if (ExportDockBtn) {
     UpdateRightPanelUi();
     UpdateToolsUi();
     PushHistory();
+  });
+}
+
+if (ToggleInfoBtn) {
+  ToggleInfoBtn.addEventListener("click", () => {
+    ToggleInfoOverlay();
+  });
+}
+
+if (InfoBackBtn) {
+  InfoBackBtn.addEventListener("click", () => {
+    CloseInfoOverlay();
+  });
+}
+
+if (InfoOverlay) {
+  InfoOverlay.addEventListener("click", (Ev) => {
+    if (Ev.target === InfoOverlay) {
+      CloseInfoOverlay();
+    }
+  });
+}
+
+if (InfoTabButtons.length) {
+  InfoTabButtons.forEach((Btn) => {
+    Btn.addEventListener("click", () => {
+      SetInfoTab(Btn.dataset.infoTab);
+    });
   });
 }
 

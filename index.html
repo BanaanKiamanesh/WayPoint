@@ -19,7 +19,7 @@
     />
 
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css?v=6" />
+    <link rel="stylesheet" href="css/styles.css?v=7" />
   </head>
 
   <body>
@@ -555,6 +555,360 @@
             />
           </svg>
         </button>
+        <button
+          id="ToggleInfoBtn"
+          type="button"
+          class="dockButton"
+          title="About"
+          aria-label="About"
+        >
+          <svg class="dockButtonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+            <circle cx="12" cy="7" r="1.6" fill="currentColor" />
+            <line x1="12" y1="10.5" x2="12" y2="16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="InfoOverlay" class="infoOverlay" aria-hidden="true">
+      <div class="infoPanel" role="dialog" aria-modal="true" aria-labelledby="InfoTitle">
+        <div class="infoHeader">
+          <div class="infoBrand">
+            <img src="assets/logo_reduced.png" alt="Waypoint Planner logo" class="infoLogo" />
+            <div class="infoBrandText">
+              <div id="InfoTitle" class="infoTitle">Waypoint Planner</div>
+              <div class="infoSubtitle">Free waypoint planning for DJI Fly missions.</div>
+            </div>
+          </div>
+          <div class="infoHeaderActions">
+            <button id="InfoBackBtn" type="button" class="toolButton">Back to Planner</button>
+          </div>
+        </div>
+
+        <div class="infoTabs" role="tablist" aria-label="About tabs">
+          <button
+            id="InfoTabBtnTutorials"
+            class="infoTab active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="InfoTabTutorials"
+            data-info-tab="tutorials"
+          >
+            Tutorials
+          </button>
+          <button
+            id="InfoTabBtnAbout"
+            class="infoTab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="InfoTabAbout"
+            data-info-tab="about"
+          >
+            About
+          </button>
+          <button
+            id="InfoTabBtnDrones"
+            class="infoTab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="InfoTabDrones"
+            data-info-tab="drones"
+          >
+            Supported drones
+          </button>
+          <button
+            id="InfoTabBtnFaq"
+            class="infoTab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="InfoTabFaq"
+            data-info-tab="faq"
+          >
+            FAQ
+          </button>
+        </div>
+
+        <div class="infoBody">
+          <section
+            id="InfoTabTutorials"
+            class="infoTabPanel active"
+            role="tabpanel"
+            aria-labelledby="InfoTabBtnTutorials"
+            data-info-panel="tutorials"
+          >
+            <div class="infoSection">
+              <h3>Quick start</h3>
+              <ol class="infoSteps">
+                <li>Search for your location or pan the map to your site.</li>
+                <li>Click the map to add waypoints, or use a draw tool to generate them.</li>
+                <li>Adjust altitude, speed, heading, gimbal, and camera actions per waypoint.</li>
+                <li>Use batch edit and manipulate tools to fine tune the mission.</li>
+                <li>Export DJI Fly KMZ and import it in the DJI Fly app.</li>
+              </ol>
+            </div>
+
+            <div class="infoSection">
+              <h3>Map navigation and search</h3>
+              <ul class="infoList">
+                <li>Use the search bar for city, address, or landmark lookup.</li>
+                <li>Scroll or pinch to zoom, drag to pan, and press Space to fit the map.</li>
+                <li>Results list is clickable and recenters the map instantly.</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Waypoints 101</h3>
+              <ul class="infoList">
+                <li>Click on the map to drop a waypoint.</li>
+                <li>Drag a waypoint on the map to reposition it.</li>
+                <li>Shift, Ctrl, or Cmd click to multi-select waypoints.</li>
+                <li>Drag any selected waypoint to move the whole selection.</li>
+                <li>Use the drag handle in the list to reorder waypoints.</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Editing details</h3>
+              <ul class="infoList">
+                <li>Per waypoint controls: altitude, speed, heading, gimbal pitch, gimbal roll, hover time, camera action, and zoom.</li>
+                <li>Use the "Use global" toggles for altitude and speed when you want consistency.</li>
+                <li>Estimated distance and time update live, using each waypoint speed.</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Draw tools</h3>
+              <ul class="infoList">
+                <li>Line: draw a path and generate evenly spaced points.</li>
+                <li>Polygon: draw a boundary and generate a coverage path.</li>
+                <li>Ellipse: click center then radius, then drag handles to refine.</li>
+                <li>Use spacing and resolution to control density.</li>
+                <li>Set gimbal pitch and roll for generated points only.</li>
+                <li>Image overlap (polygon and ellipse): auto spacing and photo waypoints based on overlap and interval.</li>
+                <li>Confirm locks the current shape so you can tweak settings without losing it.</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Manipulate tools</h3>
+              <ul class="infoList">
+                <li>Rotate selected points around their centroid.</li>
+                <li>Batch edit altitude, speed, heading, gimbal, hover, camera action, and zoom.</li>
+                <li>Nudge or offset selections with a distance and bearing.</li>
+                <li>Reverse the waypoint order with one click.</li>
+                <li>Terrain correction keeps a target AGL with an optional max altitude cap.</li>
+                <li>Set the mission completion action (hover, return to home, or land).</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Import and export</h3>
+              <ul class="infoList">
+                <li>Import KML, KMZ, or CSV from the Import panel or by drag and drop.</li>
+                <li>Export DJI Fly KMZ, standard KML, or CSV.</li>
+                <li>Choose straight or curved path mode to match DJI Fly behavior.</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Visual aids</h3>
+              <ul class="infoList">
+                <li>Altitude badges appear when zoomed in and under 350 waypoints.</li>
+                <li>Switch units between metric and imperial at any time.</li>
+              </ul>
+            </div>
+
+            <div class="infoSection">
+              <h3>Keyboard shortcuts</h3>
+              <div class="infoShortcutGrid">
+                <div class="infoShortcutHeader">Action</div>
+                <div class="infoShortcutHeader">Windows / Linux</div>
+                <div class="infoShortcutHeader">macOS</div>
+
+                <div class="infoShortcutAction">Undo</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Ctrl</span> + <span class="infoKbd">Z</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Cmd</span> + <span class="infoKbd">Z</span></div>
+
+                <div class="infoShortcutAction">Redo</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Ctrl</span> + <span class="infoKbd">Y</span> or <span class="infoKbd">Ctrl</span> + <span class="infoKbd">Shift</span> + <span class="infoKbd">Z</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Cmd</span> + <span class="infoKbd">Shift</span> + <span class="infoKbd">Z</span></div>
+
+                <div class="infoShortcutAction">Copy selection</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Ctrl</span> + <span class="infoKbd">C</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Cmd</span> + <span class="infoKbd">C</span></div>
+
+                <div class="infoShortcutAction">Paste selection</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Ctrl</span> + <span class="infoKbd">V</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Cmd</span> + <span class="infoKbd">V</span></div>
+
+                <div class="infoShortcutAction">Delete selection</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Delete</span> or <span class="infoKbd">Backspace</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Delete</span> or <span class="infoKbd">Backspace</span></div>
+
+                <div class="infoShortcutAction">Cancel active draw</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Esc</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Esc</span></div>
+
+                <div class="infoShortcutAction">Fit map to window</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Space</span></div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Space</span></div>
+
+                <div class="infoShortcutAction">Search</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Enter</span> to run, <span class="infoKbd">Esc</span> to clear</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Enter</span> to run, <span class="infoKbd">Esc</span> to clear</div>
+
+                <div class="infoShortcutAction">Multi-select waypoints</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Shift</span> or <span class="infoKbd">Ctrl</span> + Click</div>
+                <div class="infoShortcutKeys"><span class="infoKbd">Shift</span> or <span class="infoKbd">Cmd</span> + Click</div>
+
+                <div class="infoShortcutAction">Move selection</div>
+                <div class="infoShortcutKeys">Drag any selected waypoint</div>
+                <div class="infoShortcutKeys">Drag any selected waypoint</div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="InfoTabAbout"
+            class="infoTabPanel"
+            role="tabpanel"
+            aria-labelledby="InfoTabBtnAbout"
+            data-info-panel="about"
+          >
+            <div class="infoSection">
+              <h3>Why Waypoint Planner exists</h3>
+              <p class="infoText">
+                This project exists because a lot of people charge money for basic waypoint planning. Waypoint Planner keeps it simple, free, and fully in your browser with zero accounts.
+              </p>
+            </div>
+
+            <div class="infoSection infoCallout">
+              <h3>Safety and disclaimer</h3>
+              <p class="infoText">
+                Waypoint Planner is not affiliated with or endorsed by DJI. You are responsible for safe operation, pre-flight checks, and compliance with local laws and regulations. Fly with caution and use at your own risk.
+              </p>
+            </div>
+
+            <div class="infoSection">
+              <h3>Author</h3>
+              <p class="infoText">
+                Made by <strong>Banaan Kiamanesh</strong>.
+              </p>
+              <div class="infoSocialLinks">
+                <a
+                  class="infoIconLink"
+                  href="https://github.com/BanaanKiamanesh/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Banaan Kiamanesh on GitHub"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path
+                      fill="currentColor"
+                      d="M12 2.2c-5.42 0-9.82 4.4-9.82 9.82 0 4.33 2.8 8 6.69 9.3.49.09.67-.21.67-.48 0-.24-.01-.87-.01-1.71-2.72.59-3.29-1.14-3.29-1.14-.45-1.15-1.1-1.45-1.1-1.45-.9-.62.07-.61.07-.61 1 .07 1.52 1.03 1.52 1.03.89 1.52 2.34 1.08 2.91.82.09-.64.35-1.08.63-1.32-2.17-.25-4.46-1.09-4.46-4.86 0-1.07.38-1.94 1.02-2.63-.1-.25-.45-1.26.1-2.63 0 0 .84-.27 2.75 1.01a9.5 9.5 0 0 1 5 0c1.91-1.28 2.75-1.01 2.75-1.01.55 1.37.2 2.38.1 2.63.63.69 1.02 1.56 1.02 2.63 0 3.78-2.29 4.61-4.47 4.85.36.31.68.92.68 1.86 0 1.34-.01 2.42-.01 2.75 0 .27.18.58.68.48 3.89-1.3 6.68-4.97 6.68-9.3 0-5.42-4.4-9.82-9.82-9.82z"
+                    />
+                  </svg>
+                  <span class="srOnly">GitHub</span>
+                </a>
+                <a
+                  class="infoIconLink"
+                  href="https://www.linkedin.com/in/banaankiamanesh/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Banaan Kiamanesh on LinkedIn"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path
+                      fill="currentColor"
+                      d="M4.98 3.5C3.88 3.5 3 4.39 3 5.5s.88 2 1.98 2 2-.9 2-2-.9-2-2-2zM3.5 8.75h3v11.75h-3V8.75zM9.5 8.75h2.88v1.6h.04c.4-.76 1.38-1.56 2.84-1.56 3.04 0 3.6 2 3.6 4.6v7.11h-3v-6.3c0-1.5-.02-3.43-2.09-3.43-2.1 0-2.42 1.64-2.42 3.33v6.4h-3V8.75z"
+                    />
+                  </svg>
+                  <span class="srOnly">LinkedIn</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="infoSection">
+              <h3>Contact</h3>
+              <p class="infoText">
+                Email: <strong>banaankiamanesh@gmail.com</strong> (not product support).
+                If you run into issues, open a GitHub issue and I will try to solve it.
+              </p>
+            </div>
+          </section>
+
+          <section
+            id="InfoTabDrones"
+            class="infoTabPanel"
+            role="tabpanel"
+            aria-labelledby="InfoTabBtnDrones"
+            data-info-panel="drones"
+          >
+            <div class="infoSection">
+              <h3>Supported DJI Fly drones</h3>
+              <p class="infoText">
+                These models support DJI Fly Waypoint Flight. Availability can vary by firmware or app version.
+              </p>
+              <div class="infoCardGrid">
+                <a class="infoCard" href="https://www.dji.com/mini-5-pro" target="_blank" rel="noopener noreferrer">DJI Mini 5 Pro</a>
+                <a class="infoCard" href="https://www.dji.com/mini-4-pro" target="_blank" rel="noopener noreferrer">DJI Mini 4 Pro</a>
+                <a class="infoCard" href="https://www.dji.com/air-3" target="_blank" rel="noopener noreferrer">DJI Air 3</a>
+                <a class="infoCard" href="https://www.dji.com/air-3s" target="_blank" rel="noopener noreferrer">DJI Air 3S</a>
+                <a class="infoCard" href="https://www.dji.com/mavic-3" target="_blank" rel="noopener noreferrer">DJI Mavic 3</a>
+                <a class="infoCard" href="https://www.dji.com/mavic-3-classic" target="_blank" rel="noopener noreferrer">DJI Mavic 3 Classic</a>
+                <a class="infoCard" href="https://www.dji.com/mavic-3-pro" target="_blank" rel="noopener noreferrer">DJI Mavic 3 Pro</a>
+                <a class="infoCard" href="https://www.dji.com/mavic-4-pro" target="_blank" rel="noopener noreferrer">DJI Mavic 4 Pro</a>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="InfoTabFaq"
+            class="infoTabPanel"
+            role="tabpanel"
+            aria-labelledby="InfoTabBtnFaq"
+            data-info-panel="faq"
+          >
+            <div class="infoSection">
+              <h3>Frequently asked questions</h3>
+              <div class="infoFaq">
+                <details>
+                  <summary>Is Waypoint Planner affiliated with DJI?</summary>
+                  <p>No. This is an independent community project and it is not endorsed by DJI. It simply generates mission files that DJI Fly can read on supported aircraft.</p>
+                </details>
+                <details>
+                  <summary>Do you upload my missions or store my data?</summary>
+                  <p>Nope. Everything runs locally in your browser and no account is required. Your files stay on your device unless you explicitly export or share them.</p>
+                </details>
+                <details>
+                  <summary>Why does DJI Fly adjust settings when I import a mission?</summary>
+                  <p>DJI Fly may adjust speed, path smoothing, or other parameters based on aircraft limits, safety rules, and firmware behavior. This is normal, especially when importing missions created on another device or app version.</p>
+                </details>
+                <details>
+                  <summary>My KMZ does not import or shows nothing. What should I try?</summary>
+                  <p>First confirm your aircraft supports Waypoint Flight and that DJI Fly and firmware are up to date. Try a short mission with only a few waypoints, and export again using straight path mode. If it still fails, test the file in a KMZ viewer and share details in a GitHub issue.</p>
+                </details>
+                <details>
+                  <summary>Is there product support?</summary>
+                  <p>There is no official support desk. Please open a GitHub issue with steps to reproduce, the file you imported, and screenshots. I will try to help when I can.</p>
+                </details>
+                <details>
+                  <summary>What about drone flight regulations?</summary>
+                  <p>Follow local laws, altitude limits, and no-fly zones. Always maintain visual line of sight, respect privacy, and avoid flying over crowds or sensitive areas. When in doubt, check your local aviation authority guidance.</p>
+                </details>
+                <details>
+                  <summary>Can I use this on mobile?</summary>
+                  <p>It works in modern mobile browsers, but desktop is recommended for precision edits and drag tools. On mobile, use pinch to zoom and be mindful of smaller hit targets.</p>
+                </details>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -586,15 +940,15 @@
     <script src="js/ellipse.js?v=2"></script>
 
     <!-- Custom scripts -->
-      <script src="js/app-state.js?v=8"></script>
+      <script src="js/app-state.js?v=9"></script>
       <script src="js/helpers.js?v=5"></script>
       <script src="js/terrain.js?v=1"></script>
     <script src="js/ellipse-tools.js?v=2"></script>
     <script src="js/algorithms.js?v=2"></script>
     <script src="js/waypoints.js?v=4"></script>
       <script src="js/export.js?v=5"></script>
-      <script src="js/ui.js?v=6"></script>
+      <script src="js/ui.js?v=7"></script>
       <script src="js/history.js?v=7"></script>
-      <script src="js/main.js?v=8"></script>
+      <script src="js/main.js?v=9"></script>
   </body>
 </html>

@@ -595,8 +595,8 @@ body {
 .wpRow {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
+  gap: 4px;
+  padding: 8px;
   color: var(--text);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
@@ -621,7 +621,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .wpHeaderMain {
@@ -640,13 +640,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   cursor: grab;
   user-select: none;
@@ -680,7 +680,7 @@ body {
 
 .wpIndex {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 13px;
   text-align: center;
 }
 
@@ -690,18 +690,18 @@ body {
 
 .wpLabel {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .wpDelete,
 .wpInsert {
-  padding: 7px 10px;
+  padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.12);
   color: var(--text);
   cursor: pointer;
-  min-width: 70px;
+  min-width: 64px;
 }
 
 .wpDelete:hover,
@@ -720,31 +720,31 @@ body {
 .wpRow.expanded .wpDetails {
   max-height: 600px;
   opacity: 1;
-  padding: 8px 4px 6px;
+  padding: 6px 2px 4px;
 }
 
 .wpCoordsRow {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .wpFields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .wpField label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
   margin-bottom: 4px;
 }
 
 .wpField input {
   width: 100%;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(0, 0, 0, 0.25);
@@ -754,7 +754,7 @@ body {
 
 .wpField select {
   width: 100%;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(0, 0, 0, 0.25);
@@ -777,8 +777,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  margin-bottom: 4px;
-  font-size: 12px;
+  margin-bottom: 3px;
+  font-size: 11px;
   color: var(--muted);
 }
 
@@ -1279,5 +1279,318 @@ body {
     transform: none;
     max-width: none;
     padding: 0;
+  }
+}
+
+body.infoOpen {
+  overflow: hidden;
+}
+
+.infoOverlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(circle at top, rgba(77, 179, 255, 0.12), rgba(8, 12, 22, 0.92)),
+    rgba(8, 12, 22, 0.88);
+  z-index: 2200;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.infoOverlay.visible {
+  display: flex;
+}
+
+.infoPanel {
+  width: min(96vw, 980px);
+  max-height: calc(100vh - 48px);
+  background: rgba(12, 18, 32, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.infoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 25, 45, 0.95);
+}
+
+.infoBrand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.infoLogo {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  object-fit: cover;
+}
+
+.infoTitle {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+
+.infoSubtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.infoHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.infoTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(8, 12, 22, 0.9);
+}
+
+.infoTab {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.infoTab:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.infoTab.active {
+  background: #4db3ff;
+  color: #0b1f33;
+  border-color: rgba(77, 179, 255, 0.9);
+  box-shadow: 0 4px 12px rgba(77, 179, 255, 0.35);
+}
+
+.infoBody {
+  padding: 16px 18px 22px;
+  overflow: auto;
+}
+
+.infoTabPanel {
+  display: none;
+}
+
+.infoTabPanel.active {
+  display: block;
+}
+
+.infoSection {
+  margin-bottom: 18px;
+}
+
+.infoSection h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.infoText {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.infoList,
+.infoSteps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.infoList li,
+.infoSteps li {
+  margin-bottom: 6px;
+}
+
+.infoCallout {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.infoShortcutGrid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(220px, 1.4fr) minmax(160px, 1fr);
+  gap: 8px 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  overflow-x: auto;
+}
+
+.infoShortcutHeader {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.infoShortcutAction {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.infoShortcutKeys {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.infoKbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  margin: 0 2px;
+}
+
+.infoCardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.infoCard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.infoCard:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.infoFaq details {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+
+.infoFaq summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.infoFaq p {
+  margin: 8px 0 0;
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.infoSocialLinks {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.infoIconLink {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.infoIconLink:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.infoIconLink svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+@media (max-width: 760px) {
+  .infoOverlay {
+    padding: 12px;
+  }
+
+  .infoHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .infoHeaderActions {
+    width: 100%;
   }
 }

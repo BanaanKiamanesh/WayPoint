@@ -102,6 +102,17 @@ function UpdateRightPanelUi() {
   }
 }
 
+function UpdateInfoOverlayUi() {
+  if (InfoOverlay) {
+    InfoOverlay.classList.toggle("visible", InfoPanelOpen);
+    InfoOverlay.setAttribute("aria-hidden", InfoPanelOpen ? "false" : "true");
+  }
+  if (ToggleInfoBtn) {
+    ToggleInfoBtn.classList.toggle("active", InfoPanelOpen);
+  }
+  document.body.classList.toggle("infoOpen", InfoPanelOpen);
+}
+
 function TryFinishPolygonOnFirstPoint(Ev) {
   if (!ActiveDrawer || ActiveDrawMode !== "polygon") return false;
   const Markers = ActiveDrawer._markers || [];
@@ -923,4 +934,5 @@ function RenderAll() {
   UpdateToolsUi();
   UpdateLeftPanelUi();
   UpdateRightPanelUi();
+  UpdateInfoOverlayUi();
 }
