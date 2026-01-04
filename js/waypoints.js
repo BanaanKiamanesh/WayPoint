@@ -826,6 +826,34 @@ function RenderWaypointList() {
         ToggleWrap.appendChild(ToggleLabel);
         HeaderRow.appendChild(ToggleWrap);
       }
+
+      if (Field.key === "Heading") {
+        const BearingBtn = document.createElement("button");
+        BearingBtn.className = "wpBearing";
+        BearingBtn.textContent = "Towards next WP";
+        BearingBtn.title = "Aim heading towards next waypoint";
+        BearingBtn.disabled = (Idx+1 >= Waypoints.length);
+        BearingBtn.addEventListener("click", (Ev) => {
+          Ev.stopPropagation();
+          if(Idx + 1 >= Waypoints.length)
+            return;
+
+          const heading = bearingBetweenPoints(
+            { lat: Wp.Lat, lng: Wp.Lon },
+            { lat: Waypoints[Idx + 1].Lat, lng: Waypoints[Idx + 1].Lon }
+          );
+
+          if (Number.isFinite(heading)) {
+            Wp.Heading = heading.toFixed(2);
+            RenderWaypointList();
+            RefreshMarkers();
+            PushHistory();
+          }
+        });
+
+        HeaderRow.appendChild(BearingBtn);
+      }
+
       Wrap.appendChild(HeaderRow);
 
       const Input = document.createElement("input");
